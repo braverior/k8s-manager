@@ -1,0 +1,47 @@
+server:
+  port: 8000
+  mode: debug  # debug, release, test
+
+database:
+  host: 172.22.50.1
+  port: 3306
+  username: root
+  password: 123456
+  database: k8s_manager
+  charset: utf8mb4
+  max_idle_conns: 10
+  max_open_conns: 100
+
+log:
+  level: info  # debug, info, warn, error
+  format: json  # json, console
+  output: stdout  # stdout, file
+  file_path: logs/app.log
+
+# 集群配置列表
+# type: in-cluster (默认) - 使用 ServiceAccount 认证，适合部署在 K8s 集群内
+# type: kubeconfig - 使用 kubeconfig 文件，适合本地开发或管理外部集群
+clusters:
+  # 当前集群（部署在 K8s 中时使用 ServiceAccount）
+  - name: local
+    description: 当前集群
+    type: in-cluster
+
+  # 外部集群示例（需要 kubeconfig 文件）
+  # - name: production
+  #   description: 生产环境集群
+  #   type: kubeconfig
+  #   kubeconfig_path: /etc/k8s-manager/kubeconfigs/production.yaml
+
+# 飞书配置
+feishu:
+  app_id: "cli_xxxxxxxxxx"                                    # 飞书应用 App ID
+  app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"                      # 飞书应用 App Secret
+  redirect_uri: "https://your-frontend-domain.com/auth/feishu/callback"  # 授权回调地址（前端地址）
+  authorize_url: "https://passport.feishu.cn/suite/passport/oauth/authorize"  # 飞书授权页面 URL
+
+# JWT 配置
+jwt:
+  secret: "your-jwt-secret-key-please-change-in-production"   # JWT 签名密钥（生产环境请修改）
+  expire_time: 86400                                          # Token 过期时间（秒），默认 24 小时
+  issuer: "k8s-manager"                                       # 签发者
