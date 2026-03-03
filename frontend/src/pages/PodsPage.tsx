@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { podApi } from '@/api';
+import { podApi, deploymentApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/spinner';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import { PodTerminalDialog } from '@/components/PodTerminalDialog';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Pod } from '@/types';
+import type { Pod, PodLogResponse, PodEvent, Deployment } from '@/types';
 import {
   Search,
   RefreshCw,
@@ -33,8 +34,13 @@ import {
   RotateCcw,
   LayoutGrid,
   List,
-  X,
   Box,
+  Terminal,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from 'lucide-react';
 
 type ViewMode = 'card' | 'table';
@@ -49,12 +55,23 @@ export function PodsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [deploymentsLoading, setDeploymentsLoading] = useState(true);
 
   // Dialog states
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
   const [selectedPod, setSelectedPod] = useState<Pod | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Logs & Events states
+  const [podLogs, setPodLogs] = useState<PodLogResponse | null>(null);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsPrevious, setLogsPrevious] = useState(false);
+  const [selectedLogContainer, setSelectedLogContainer] = useState('');
+  const [podEvents, setPodEvents] = useState<PodEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
 
   const fetchPods = useCallback(async () => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -64,6 +81,7 @@ export function PodsPage() {
       const data = await podApi.list(selectedCluster, selectedNamespace, params);
       setPods(data || []);
     } catch (err) {
+      setPods([]);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch Pods',
@@ -78,8 +96,30 @@ export function PodsPage() {
     fetchPods();
   }, [fetchPods]);
 
+  const fetchDeployments = useCallback(async () => {
+    if (!selectedCluster || !selectedNamespace) return;
+    try {
+      setDeploymentsLoading(true);
+      const data = await deploymentApi.list(selectedCluster, selectedNamespace);
+      setDeployments(data || []);
+    } catch {
+      setDeployments([]);
+    } finally {
+      setDeploymentsLoading(false);
+    }
+  }, [selectedCluster, selectedNamespace]);
+
+  useEffect(() => {
+    fetchDeployments();
+  }, [fetchDeployments]);
+
   const clearDeploymentFilter = () => {
     searchParams.delete('deployment');
+    setSearchParams(searchParams);
+  };
+
+  const setDeploymentFilterParam = (name: string) => {
+    searchParams.set('deployment', name);
     setSearchParams(searchParams);
   };
 
@@ -105,6 +145,57 @@ export function PodsPage() {
   const filteredPods = pods.filter((pod) =>
     pod.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const fetchLogs = useCallback(async (podName: string, container?: string, previous?: boolean) => {
+    if (!selectedCluster || !selectedNamespace) return;
+    try {
+      setLogsLoading(true);
+      const data = await podApi.getLogs(selectedCluster, selectedNamespace, podName, {
+        container: container || undefined,
+        tail_lines: 500,
+        previous: previous || false,
+      });
+      setPodLogs(data);
+    } catch (err) {
+      setPodLogs(null);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to fetch logs',
+        variant: 'destructive',
+      });
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [selectedCluster, selectedNamespace, toast]);
+
+  const fetchEvents = useCallback(async (podName: string) => {
+    if (!selectedCluster || !selectedNamespace) return;
+    try {
+      setEventsLoading(true);
+      const data = await podApi.getEvents(selectedCluster, selectedNamespace, podName);
+      setPodEvents(data || []);
+    } catch (err) {
+      setPodEvents([]);
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to fetch events',
+        variant: 'destructive',
+      });
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [selectedCluster, selectedNamespace, toast]);
+
+  const handleTabChange = (value: string) => {
+    if (!selectedPod) return;
+    if (value === 'logs') {
+      setLogsPrevious(false);
+      setSelectedLogContainer('');
+      fetchLogs(selectedPod.name);
+    } else if (value === 'events') {
+      fetchEvents(selectedPod.name);
+    }
+  };
 
   const getPhaseVariant = (phase: string) => {
     switch (phase) {
@@ -173,21 +264,27 @@ export function PodsPage() {
         </div>
       </div>
 
-      {/* Deployment Filter Indicator */}
-      {deploymentFilter && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="flex items-center gap-1.5 px-3 py-1.5">
-            <Box className="w-3.5 h-3.5" />
-            Filtered by Deployment: {deploymentFilter}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4 ml-1 hover:bg-transparent"
-              onClick={clearDeploymentFilter}
-            >
-              <X className="w-3 h-3" />
-            </Button>
+      {/* Deployment Filter Tags */}
+      {!deploymentsLoading && deployments.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Box className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Badge
+            variant={deploymentFilter ? 'outline' : 'default'}
+            className="cursor-pointer hover:opacity-80"
+            onClick={clearDeploymentFilter}
+          >
+            全部({deployments.reduce((sum, d) => sum + d.pod_count, 0)})
           </Badge>
+          {deployments.map((dep) => (
+            <Badge
+              key={dep.name}
+              variant={deploymentFilter === dep.name ? 'default' : 'outline'}
+              className="cursor-pointer hover:opacity-80"
+              onClick={() => setDeploymentFilterParam(dep.name)}
+            >
+              {dep.name}({dep.pod_count})
+            </Badge>
+          ))}
         </div>
       )}
 
@@ -318,6 +415,21 @@ export function PodsPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedPod(pod);
+                        setTerminalDialogOpen(true);
+                      }}
+                      disabled={pod.phase !== 'Running'}
+                      title={pod.phase !== 'Running' ? 'Pod must be running' : 'Open terminal'}
+                    >
+                      <Terminal className="w-4 h-4 mr-1" />
+                      Terminal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPod(pod);
                         setViewDialogOpen(true);
                       }}
                     >
@@ -334,8 +446,7 @@ export function PodsPage() {
                         setDeleteDialogOpen(true);
                       }}
                     >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Restart
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
@@ -410,6 +521,19 @@ export function PodsPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedPod(pod);
+                            setTerminalDialogOpen(true);
+                          }}
+                          disabled={pod.phase !== 'Running'}
+                          title={pod.phase !== 'Running' ? 'Pod must be running' : 'Open terminal'}
+                        >
+                          <Terminal className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPod(pod);
                             setViewDialogOpen(true);
                           }}
                         >
@@ -438,21 +562,29 @@ export function PodsPage() {
       )}
 
       {/* View Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+      <Dialog open={viewDialogOpen} onOpenChange={(open) => {
+        setViewDialogOpen(open);
+        if (!open) {
+          setPodLogs(null);
+          setPodEvents([]);
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Container className="w-5 h-5 text-primary" />
-              {selectedPod?.name}
+            <DialogTitle className="flex items-center gap-2 min-w-0">
+              <Container className="w-5 h-5 text-primary shrink-0" />
+              <span className="truncate" title={selectedPod?.name}>{selectedPod?.name}</span>
             </DialogTitle>
-            <DialogDescription>Pod details and container information</DialogDescription>
+            <DialogDescription>Pod details, logs, and events</DialogDescription>
           </DialogHeader>
 
           {selectedPod && (
-            <Tabs defaultValue="overview" className="mt-4">
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs defaultValue="overview" className="mt-4" onValueChange={handleTabChange}>
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="containers">Containers</TabsTrigger>
+                <TabsTrigger value="logs">Logs</TabsTrigger>
+                <TabsTrigger value="events">Events</TabsTrigger>
                 <TabsTrigger value="metrics">Metrics</TabsTrigger>
               </TabsList>
 
@@ -491,6 +623,31 @@ export function PodsPage() {
                     <p className="text-sm">{new Date(selectedPod.created_at).toLocaleString()}</p>
                   </div>
                 </div>
+
+                {/* Conditions */}
+                {selectedPod.conditions && selectedPod.conditions.length > 0 && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <p className="text-sm font-medium">Conditions</p>
+                    <div className="space-y-2">
+                      {selectedPod.conditions.map((cond) => (
+                        <div key={cond.type} className="flex items-start gap-2 text-sm">
+                          {cond.status === 'True' ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="font-medium">{cond.type}</span>
+                            {cond.reason && <span className="text-muted-foreground"> - {cond.reason}</span>}
+                            {cond.message && (
+                              <p className="text-muted-foreground text-xs mt-0.5">{cond.message}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="containers" className="space-y-4 mt-4">
@@ -508,9 +665,9 @@ export function PodsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Image</span>
-                        <span className="font-mono text-xs truncate max-w-[250px]" title={container.image}>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground shrink-0">Image</span>
+                        <span className="font-mono text-xs truncate" title={container.image}>
                           {container.image}
                         </span>
                       </div>
@@ -524,9 +681,158 @@ export function PodsPage() {
                           <span>{new Date(container.started_at).toLocaleString()}</span>
                         </div>
                       )}
+                      {container.reason && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Reason</span>
+                          <span className="text-yellow-500">{container.reason}</span>
+                        </div>
+                      )}
+                      {container.message && (
+                        <div className="pt-1">
+                          <span className="text-muted-foreground text-xs">Message: </span>
+                          <span className="text-xs text-red-500">{container.message}</span>
+                        </div>
+                      )}
+                      {container.exit_code != null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Exit Code</span>
+                          <span className={container.exit_code !== 0 ? 'text-red-500' : ''}>{container.exit_code}</span>
+                        </div>
+                      )}
+                      {container.last_state && (
+                        <div className="pt-2 border-t border-border space-y-1">
+                          <p className="text-xs text-muted-foreground font-medium">Last State</p>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground text-xs">State</span>
+                            <span className="text-xs">{container.last_state}</span>
+                          </div>
+                          {container.last_reason && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground text-xs">Reason</span>
+                              <span className="text-xs text-yellow-500">{container.last_reason}</span>
+                            </div>
+                          )}
+                          {container.last_message && (
+                            <p className="text-xs text-red-500">{container.last_message}</p>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )) || <p className="text-muted-foreground">No container information available</p>}
+              </TabsContent>
+
+              <TabsContent value="logs" className="space-y-3 mt-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedPod.containers && selectedPod.containers.length > 1 && (
+                    <select
+                      className="text-sm border rounded-md px-2 py-1 bg-background"
+                      value={selectedLogContainer}
+                      onChange={(e) => {
+                        setSelectedLogContainer(e.target.value);
+                        fetchLogs(selectedPod.name, e.target.value, logsPrevious);
+                      }}
+                    >
+                      <option value="">Default container</option>
+                      {selectedPod.containers.map((c) => (
+                        <option key={c.name} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <label className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={logsPrevious}
+                      onChange={(e) => {
+                        setLogsPrevious(e.target.checked);
+                        fetchLogs(selectedPod.name, selectedLogContainer, e.target.checked);
+                      }}
+                      className="rounded"
+                    />
+                    Previous container
+                  </label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchLogs(selectedPod.name, selectedLogContainer, logsPrevious)}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    Refresh
+                  </Button>
+                </div>
+                {logsLoading ? (
+                  <Loading text="Loading logs..." />
+                ) : podLogs?.logs ? (
+                  <pre className="bg-muted p-3 rounded-lg text-xs font-mono overflow-auto max-h-[400px] whitespace-pre-wrap break-all">
+                    {podLogs.logs}
+                  </pre>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No logs available</p>
+                    <p className="text-xs mt-1">Container may not have started yet</p>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="events" className="space-y-3 mt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">{podEvents.length} events</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchEvents(selectedPod.name)}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    Refresh
+                  </Button>
+                </div>
+                {eventsLoading ? (
+                  <Loading text="Loading events..." />
+                ) : podEvents.length > 0 ? (
+                  <div className="space-y-2">
+                    {podEvents.map((event, idx) => (
+                      <div
+                        key={`${event.reason}-${idx}`}
+                        className={`p-3 rounded-lg border text-sm ${
+                          event.type === 'Warning' ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-border'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {event.type === 'Warning' ? (
+                            <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
+                          ) : (
+                            <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium">{event.reason}</span>
+                              <Badge variant={event.type === 'Warning' ? 'warning' : 'secondary'} className="text-xs">
+                                {event.type}
+                              </Badge>
+                              {event.count > 1 && (
+                                <span className="text-xs text-muted-foreground">x{event.count}</span>
+                              )}
+                            </div>
+                            <p className="text-muted-foreground mt-1 break-all">{event.message}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span>{event.source}</span>
+                              {event.last_time && (
+                                <span>{new Date(event.last_time).toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No events found</p>
+                    <p className="text-xs mt-1">Events are typically retained for 1 hour</p>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="metrics" className="space-y-4 mt-4">
@@ -579,6 +885,15 @@ export function PodsPage() {
         resourceName={selectedPod?.name || ''}
         onConfirm={handleDelete}
         deleting={deleting}
+      />
+
+      {/* Terminal Dialog */}
+      <PodTerminalDialog
+        open={terminalDialogOpen}
+        onOpenChange={setTerminalDialogOpen}
+        pod={selectedPod}
+        cluster={selectedCluster}
+        namespace={selectedNamespace}
       />
     </div>
   );

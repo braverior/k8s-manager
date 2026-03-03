@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useCluster } from '@/hooks/use-cluster';
 import { useAuth } from '@/hooks/use-auth';
+import { useTheme } from '@/hooks/use-theme';
 import {
   Box,
   Layers,
@@ -33,6 +34,8 @@ import {
   Building2,
   Hash,
   Phone,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 const navItems = [
@@ -52,6 +55,7 @@ const adminNavItems = [
 export function Sidebar() {
   const location = useLocation();
   const { user, isAdmin, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const {
     clusters,
     namespaces,
@@ -67,7 +71,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 min-h-screen bg-card border-r border-border flex flex-col">
+    <aside className="w-64 h-screen sticky top-0 bg-card border-r border-border flex flex-col">
       {/* Logo */}
       <div className="p-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -143,7 +147,7 @@ export function Sidebar() {
       <Separator />
 
       {/* Navigation */}
-      <nav className="flex-1 p-3">
+      <nav className="flex-1 p-3 overflow-y-auto">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -231,6 +235,15 @@ export function Sidebar() {
                   </div>
                 </div>
               </PopoverTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

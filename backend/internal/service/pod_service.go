@@ -133,6 +133,81 @@ func (s *PodService) Delete(ctx context.Context, clusterName, namespace, name st
 	return nil
 }
 
+// GetLogs 获取 Pod 容器日志
+func (s *PodService) GetLogs(ctx context.Context, clusterName, namespace, name, container string, tailLines int64, previous bool, timestamps bool) (*dto.PodLogResponse, error) {
+	client, err := s.clientManager.GetClient(clusterName)
+	if err != nil {
+		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
+	}
+
+	op := operator.NewPodOperator(client, nil)
+
+	// 如果未指定容器，获取第一个容器名
+	if container == "" {
+		pod, err := op.Get(ctx, namespace, name)
+		if err != nil {
+			return nil, apperrors.Wrap(err, 404, 404, "Pod 不存在")
+		}
+		if len(pod.Spec.Containers) > 0 {
+			container = pod.Spec.Containers[0].Name
+		}
+	}
+
+	logs, err := op.GetLogs(ctx, namespace, name, container, tailLines, previous, timestamps)
+	if err != nil {
+		return nil, apperrors.Wrap(err, 500, 500, "获取 Pod 日志失败")
+	}
+
+	return &dto.PodLogResponse{
+		PodName:       name,
+		ContainerName: container,
+		Logs:          logs,
+	}, nil
+}
+
+// GetEvents 获取 Pod 相关事件
+func (s *PodService) GetEvents(ctx context.Context, clusterName, namespace, name string) ([]dto.PodEvent, error) {
+	client, err := s.clientManager.GetClient(clusterName)
+	if err != nil {
+		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
+	}
+
+	op := operator.NewPodOperator(client, nil)
+	events, err := op.GetEvents(ctx, namespace, name)
+	if err != nil {
+		return nil, apperrors.Wrap(err, 500, 500, "获取 Pod 事件失败")
+	}
+
+	result := make([]dto.PodEvent, 0, len(events))
+	for _, e := range events {
+		source := e.Source.Component
+		if e.Source.Host != "" {
+			source += "/" + e.Source.Host
+		}
+
+		firstTime := ""
+		if !e.FirstTimestamp.IsZero() {
+			firstTime = e.FirstTimestamp.Format("2006-01-02T15:04:05Z")
+		}
+		lastTime := ""
+		if !e.LastTimestamp.IsZero() {
+			lastTime = e.LastTimestamp.Format("2006-01-02T15:04:05Z")
+		}
+
+		result = append(result, dto.PodEvent{
+			Type:      e.Type,
+			Reason:    e.Reason,
+			Message:   e.Message,
+			Source:    source,
+			Count:     e.Count,
+			FirstTime: firstTime,
+			LastTime:  lastTime,
+		})
+	}
+
+	return result, nil
+}
+
 func (s *PodService) toResponses(pods []corev1.Pod, metricsMap map[string]*operator.PodMetrics) []dto.PodResponse {
 	var responses []dto.PodResponse
 	for _, pod := range pods {
@@ -186,12 +261,46 @@ func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *
 		} else if cs.State.Waiting != nil {
 			container.State = "Waiting"
 			container.Reason = cs.State.Waiting.Reason
+			container.Message = cs.State.Waiting.Message
 		} else if cs.State.Terminated != nil {
 			container.State = "Terminated"
 			container.Reason = cs.State.Terminated.Reason
+			container.Message = cs.State.Terminated.Message
+			exitCode := cs.State.Terminated.ExitCode
+			container.ExitCode = &exitCode
+		}
+
+		// 上一次容器状态
+		if cs.LastTerminationState.Running != nil {
+			container.LastState = "Running"
+		} else if cs.LastTerminationState.Waiting != nil {
+			container.LastState = "Waiting"
+			container.LastReason = cs.LastTerminationState.Waiting.Reason
+			container.LastMessage = cs.LastTerminationState.Waiting.Message
+		} else if cs.LastTerminationState.Terminated != nil {
+			container.LastState = "Terminated"
+			container.LastReason = cs.LastTerminationState.Terminated.Reason
+			container.LastMessage = cs.LastTerminationState.Terminated.Message
 		}
 
 		resp.Containers = append(resp.Containers, container)
+	}
+
+	// Pod 条件
+	if len(pod.Status.Conditions) > 0 {
+		resp.Conditions = make([]dto.PodCondition, 0, len(pod.Status.Conditions))
+		for _, cond := range pod.Status.Conditions {
+			pc := dto.PodCondition{
+				Type:   string(cond.Type),
+				Status: string(cond.Status),
+				Reason: cond.Reason,
+				Message: cond.Message,
+			}
+			if !cond.LastTransitionTime.IsZero() {
+				pc.LastTransitionTime = cond.LastTransitionTime.Format("2006-01-02T15:04:05Z")
+			}
+			resp.Conditions = append(resp.Conditions, pc)
+		}
 	}
 
 	// 添加资源指标

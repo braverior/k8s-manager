@@ -68,6 +68,8 @@ export function HistoryPage() {
       setRecords(data.items || []);
       setTotal(data.total || 0);
     } catch (err) {
+      setRecords([]);
+      setTotal(0);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch history',

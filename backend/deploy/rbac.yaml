@@ -20,6 +20,21 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list", "delete"]
 
+  # Pod 日志读取权限
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # Pod exec 权限（用于终端交互）
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+
+  # Event 读取权限（用于 Pod 事件诊断）
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+
   # Pod Metrics 读取权限
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods"]

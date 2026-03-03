@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { adminApi, clusterApi } from '@/api';
+import { getClusters } from '@/config/clusters';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -65,7 +66,9 @@ export function UsersPage() {
       if (searchTerm) params.keyword = searchTerm;
       if (roleFilter !== 'all') params.role = roleFilter;
 
-      const data = await adminApi.listUsers(params);
+      const apiServer = getClusters()[0]?.api_server;
+      if (!apiServer) throw new Error('No clusters configured');
+      const data = await adminApi.listUsers(apiServer, params);
       setUsers(data.items || []);
       setTotal(data.total);
     } catch (err) {
@@ -79,27 +82,20 @@ export function UsersPage() {
     }
   }, [page, searchTerm, roleFilter, toast]);
 
-  const fetchClusters = useCallback(async () => {
-    try {
-      const data = await clusterApi.list();
-      setClusters(data || []);
-    } catch (err) {
-      console.error('Failed to fetch clusters:', err);
-    }
+  useEffect(() => {
+    setClusters(getClusters());
   }, []);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  useEffect(() => {
-    fetchClusters();
-  }, [fetchClusters]);
-
   const handleToggleRole = async (user: User) => {
     const newRole = user.is_admin ? 'user' : 'admin';
     try {
-      await adminApi.updateUserRole(user.id, newRole);
+      const apiServer = getClusters()[0]?.api_server;
+      if (!apiServer) throw new Error('No clusters configured');
+      await adminApi.updateUserRole(apiServer, user.id, newRole);
       toast({
         title: 'Success',
         description: `User role updated to ${newRole}`,
@@ -117,7 +113,9 @@ export function UsersPage() {
   const handleToggleStatus = async (user: User) => {
     const newStatus = user.status === 'active' ? 'disabled' : 'active';
     try {
-      await adminApi.updateUserStatus(user.id, newStatus);
+      const apiServer = getClusters()[0]?.api_server;
+      if (!apiServer) throw new Error('No clusters configured');
+      await adminApi.updateUserStatus(apiServer, user.id, newStatus);
       toast({
         title: 'Success',
         description: `User ${newStatus === 'active' ? 'enabled' : 'disabled'}`,
@@ -208,7 +206,7 @@ export function UsersPage() {
     if (!selectedUser) return;
     try {
       setSavingPermissions(true);
-      await adminApi.setUserPermissions(selectedUser.id, editingPermissions);
+      await adminApi.setUserPermissions(getClusters()[0].api_server, selectedUser.id, editingPermissions);
       toast({ title: 'Success', description: 'Permissions updated' });
       setPermDialogOpen(false);
       fetchUsers();

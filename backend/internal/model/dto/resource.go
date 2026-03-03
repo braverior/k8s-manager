@@ -31,6 +31,7 @@ type PodResponse struct {
 	RestartCount    int32                  `json:"restart_count"`
 	CreatedAt       string                 `json:"created_at"`
 	Containers      []ContainerStatus      `json:"containers"`
+	Conditions      []PodCondition         `json:"conditions,omitempty"`
 	Metrics         *PodMetricsResponse    `json:"metrics,omitempty"`
 }
 
@@ -41,8 +42,13 @@ type ContainerStatus struct {
 	RestartCount int32  `json:"restart_count"`
 	State        string `json:"state"`
 	Reason       string `json:"reason,omitempty"`
+	Message      string `json:"message,omitempty"`
 	Image        string `json:"image"`
 	StartedAt    string `json:"started_at,omitempty"`
+	ExitCode     *int32 `json:"exit_code,omitempty"`
+	LastState    string `json:"last_state,omitempty"`
+	LastReason   string `json:"last_reason,omitempty"`
+	LastMessage  string `json:"last_message,omitempty"`
 }
 
 // PodMetricsResponse Pod 指标响应
@@ -55,4 +61,31 @@ type ContainerMetricsResponse struct {
 	Name   string `json:"name"`
 	CPU    string `json:"cpu"`
 	Memory string `json:"memory"`
+}
+
+// PodCondition Pod 条件
+type PodCondition struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	Reason             string `json:"reason,omitempty"`
+	Message            string `json:"message,omitempty"`
+	LastTransitionTime string `json:"last_transition_time,omitempty"`
+}
+
+// PodLogResponse Pod 日志响应
+type PodLogResponse struct {
+	PodName       string `json:"pod_name"`
+	ContainerName string `json:"container_name"`
+	Logs          string `json:"logs"`
+}
+
+// PodEvent Pod 事件
+type PodEvent struct {
+	Type      string `json:"type"`
+	Reason    string `json:"reason"`
+	Message   string `json:"message"`
+	Source    string `json:"source"`
+	Count     int32  `json:"count"`
+	FirstTime string `json:"first_time"`
+	LastTime  string `json:"last_time"`
 }

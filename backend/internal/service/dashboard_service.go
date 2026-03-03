@@ -183,19 +183,18 @@ func (s *DashboardService) calculateClusterResources(ctx context.Context, cluste
 	return capacity, usage
 }
 
-// formatMemory 格式化内存为易读格式
+// formatMemory 格式化内存为 Mi 单位
 func formatMemory(q *resource.Quantity) string {
 	bytes := q.Value()
-	if bytes >= 1024*1024*1024 {
-		return q.String()
+	if bytes <= 0 {
+		return "0"
 	}
-	// 转换为 Mi 单位
 	mi := float64(bytes) / (1024 * 1024)
 	if mi >= 1024 {
 		gi := mi / 1024
-		return resource.NewQuantity(int64(gi*1024*1024*1024), resource.BinarySI).String()
+		return fmt.Sprintf("%.1fGi", gi)
 	}
-	return resource.NewQuantity(int64(mi*1024*1024), resource.BinarySI).String()
+	return fmt.Sprintf("%.0fMi", mi)
 }
 
 // formatCPUValue 格式化 CPU 为毫核(m)格式

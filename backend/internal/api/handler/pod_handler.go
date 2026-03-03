@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	"k8s_api_server/internal/api/response"
@@ -78,4 +80,43 @@ func (h *PodHandler) Delete(c *gin.Context) {
 		return
 	}
 	response.NoContent(c)
+}
+
+// GetLogs 获取 Pod 容器日志
+func (h *PodHandler) GetLogs(c *gin.Context) {
+	clusterName := c.Param("cluster")
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	container := c.Query("container")
+
+	tailLines := int64(200)
+	if tl := c.Query("tail_lines"); tl != "" {
+		if v, err := strconv.ParseInt(tl, 10, 64); err == nil && v > 0 {
+			tailLines = v
+		}
+	}
+
+	previous := c.Query("previous") == "true"
+	timestamps := c.Query("timestamps") == "true"
+
+	logs, err := h.svc.GetLogs(c.Request.Context(), clusterName, namespace, name, container, tailLines, previous, timestamps)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	response.Success(c, logs)
+}
+
+// GetEvents 获取 Pod 事件
+func (h *PodHandler) GetEvents(c *gin.Context) {
+	clusterName := c.Param("cluster")
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	events, err := h.svc.GetEvents(c.Request.Context(), clusterName, namespace, name)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	response.Success(c, events)
 }

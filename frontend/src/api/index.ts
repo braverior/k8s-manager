@@ -9,6 +9,8 @@ import type {
   HistoryDiff,
   ConnectionTest,
   Pod,
+  PodLogResponse,
+  PodEvent,
   ClusterDashboard,
   NodeListItem,
   NodeDetail,
@@ -21,15 +23,23 @@ import type {
   ClusterPermission,
   BatchPermissionResult
 } from '@/types';
+import { getClusterApiServer } from '@/config/clusters';
 
-const API_BASE = '/api/v1';
+const API_PREFIX = '/api/v1';
 
 // Get token from localStorage
 function getAuthToken(): string | null {
   return localStorage.getItem('token');
 }
 
-async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
+// Build full URL: apiServer + /api/v1 + path
+function buildUrl(apiServer: string, path: string): string {
+  // Remove trailing slash from apiServer
+  const base = apiServer.replace(/\/+$/, '');
+  return `${base}${API_PREFIX}${path}`;
+}
+
+async function fetchApi<T>(apiServer: string, url: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -40,7 +50,9 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${url}`, {
+  const fullUrl = buildUrl(apiServer, url);
+
+  const response = await fetch(fullUrl, {
     ...options,
     headers,
   });
@@ -67,28 +79,34 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   return data.data;
 }
 
-// Auth APIs
-export const authApi = {
-  getFeishuConfig: () => fetchApi<FeishuConfig>('/auth/feishu/config'),
+// Helper: create a fetchApi bound to a specific cluster
+function clusterFetch<T>(cluster: string, url: string, options?: RequestInit): Promise<T> {
+  const apiServer = getClusterApiServer(cluster);
+  return fetchApi<T>(apiServer, url, options);
+}
 
-  feishuLogin: (code: string, state?: string) =>
-    fetchApi<LoginResponse>('/auth/feishu/login', {
+// Auth APIs - need a cluster's apiServer since auth is per-cluster
+// Auth uses the first available cluster by default (or the selected one)
+export const authApi = {
+  getFeishuConfig: (apiServer: string) => fetchApi<FeishuConfig>(apiServer, '/auth/feishu/config'),
+
+  feishuLogin: (apiServer: string, code: string, state?: string) =>
+    fetchApi<LoginResponse>(apiServer, '/auth/feishu/login', {
       method: 'POST',
       body: JSON.stringify({ code, state }),
     }),
 
-  getMe: () => fetchApi<User>('/auth/me'),
+  getMe: (apiServer: string) => fetchApi<User>(apiServer, '/auth/me'),
 
-  logout: () =>
-    fetchApi<void>('/auth/logout', {
+  logout: (apiServer: string) =>
+    fetchApi<void>(apiServer, '/auth/logout', {
       method: 'POST',
     }),
 };
 
-// Admin APIs
+// Admin APIs - use specific cluster's apiServer
 export const adminApi = {
-  // User management
-  listUsers: (params?: {
+  listUsers: (apiServer: string, params?: {
     keyword?: string;
     department_id?: string;
     role?: string;
@@ -102,52 +120,51 @@ export const adminApi = {
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
     const query = searchParams.toString();
-    return fetchApi<PaginatedResponse<User>>(`/admin/users${query ? `?${query}` : ''}`);
+    return fetchApi<PaginatedResponse<User>>(apiServer, `/admin/users${query ? `?${query}` : ''}`);
   },
 
-  getUser: (userId: string) => fetchApi<User>(`/admin/users/${userId}`),
+  getUser: (apiServer: string, userId: string) => fetchApi<User>(apiServer, `/admin/users/${userId}`),
 
-  updateUserRole: (userId: string, role: 'admin' | 'user') =>
-    fetchApi<void>(`/admin/users/${userId}/role`, {
+  updateUserRole: (apiServer: string, userId: string, role: 'admin' | 'user') =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/role`, {
       method: 'PUT',
       body: JSON.stringify({ role }),
     }),
 
-  updateUserStatus: (userId: string, status: 'active' | 'disabled') =>
-    fetchApi<void>(`/admin/users/${userId}/status`, {
+  updateUserStatus: (apiServer: string, userId: string, status: 'active' | 'disabled') =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status }),
     }),
 
-  // Permission management
-  getUserPermissions: (userId: string) =>
-    fetchApi<UserPermissions>(`/admin/users/${userId}/permissions`),
+  getUserPermissions: (apiServer: string, userId: string) =>
+    fetchApi<UserPermissions>(apiServer, `/admin/users/${userId}/permissions`),
 
-  setUserPermissions: (userId: string, permissions: ClusterPermission[]) =>
-    fetchApi<void>(`/admin/users/${userId}/permissions`, {
+  setUserPermissions: (apiServer: string, userId: string, permissions: ClusterPermission[]) =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/permissions`, {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     }),
 
-  addClusterPermission: (userId: string, cluster: string, namespaces: string[]) =>
-    fetchApi<void>(`/admin/users/${userId}/permissions/clusters`, {
+  addClusterPermission: (apiServer: string, userId: string, cluster: string, namespaces: string[]) =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/permissions/clusters`, {
       method: 'POST',
       body: JSON.stringify({ cluster, namespaces }),
     }),
 
-  removeClusterPermission: (userId: string, cluster: string) =>
-    fetchApi<void>(`/admin/users/${userId}/permissions/clusters/${cluster}`, {
+  removeClusterPermission: (apiServer: string, userId: string, cluster: string) =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/permissions/clusters/${cluster}`, {
       method: 'DELETE',
     }),
 
-  updateClusterNamespaces: (userId: string, cluster: string, namespaces: string[]) =>
-    fetchApi<void>(`/admin/users/${userId}/permissions/clusters/${cluster}/namespaces`, {
+  updateClusterNamespaces: (apiServer: string, userId: string, cluster: string, namespaces: string[]) =>
+    fetchApi<void>(apiServer, `/admin/users/${userId}/permissions/clusters/${cluster}/namespaces`, {
       method: 'PUT',
       body: JSON.stringify({ namespaces }),
     }),
 
-  batchSetPermissions: (userIds: string[], permissions: ClusterPermission[]) =>
-    fetchApi<BatchPermissionResult>('/admin/permissions/batch', {
+  batchSetPermissions: (apiServer: string, userIds: string[], permissions: ClusterPermission[]) =>
+    fetchApi<BatchPermissionResult>(apiServer, '/admin/permissions/batch', {
       method: 'POST',
       body: JSON.stringify({ user_ids: userIds, permissions }),
     }),
@@ -155,51 +172,49 @@ export const adminApi = {
 
 // Cluster APIs
 export const clusterApi = {
-  list: () => fetchApi<Cluster[]>('/clusters'),
-
-  get: (cluster: string) => fetchApi<Cluster>(`/clusters/${cluster}`),
+  get: (cluster: string) => clusterFetch<Cluster>(cluster, `/clusters/${cluster}`),
 
   testConnection: (cluster: string) =>
-    fetchApi<ConnectionTest>(`/clusters/${cluster}/test-connection`, { method: 'POST' }),
+    clusterFetch<ConnectionTest>(cluster, `/clusters/${cluster}/test-connection`, { method: 'POST' }),
 
   getNamespaces: (cluster: string) =>
-    fetchApi<Namespace[]>(`/clusters/${cluster}/namespaces`),
+    clusterFetch<Namespace[]>(cluster, `/clusters/${cluster}/namespaces`),
 
   getDashboard: (cluster: string) =>
-    fetchApi<ClusterDashboard>(`/clusters/${cluster}/dashboard`),
+    clusterFetch<ClusterDashboard>(cluster, `/clusters/${cluster}/dashboard`),
 };
 
 // Node APIs
 export const nodeApi = {
   list: (cluster: string) =>
-    fetchApi<NodeListItem[]>(`/clusters/${cluster}/nodes`),
+    clusterFetch<NodeListItem[]>(cluster, `/clusters/${cluster}/nodes`),
 
   get: (cluster: string, name: string) =>
-    fetchApi<NodeDetail>(`/clusters/${cluster}/nodes/${name}`),
+    clusterFetch<NodeDetail>(cluster, `/clusters/${cluster}/nodes/${name}`),
 };
 
 // ConfigMap APIs
 export const configMapApi = {
   list: (cluster: string, namespace: string) =>
-    fetchApi<K8sResource[]>(`/clusters/${cluster}/namespaces/${namespace}/configmaps`),
+    clusterFetch<K8sResource[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps`),
 
   get: (cluster: string, namespace: string, name: string) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`),
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`),
 
   create: (cluster: string, namespace: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/configmaps`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   update: (cluster: string, namespace: string, name: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
   delete: (cluster: string, namespace: string, name: string) =>
-    fetchApi<void>(`/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`, {
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`, {
       method: 'DELETE',
     }),
 };
@@ -207,30 +222,30 @@ export const configMapApi = {
 // Deployment APIs
 export const deploymentApi = {
   list: (cluster: string, namespace: string) =>
-    fetchApi<Deployment[]>(`/clusters/${cluster}/namespaces/${namespace}/deployments`),
+    clusterFetch<Deployment[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments`),
 
   get: (cluster: string, namespace: string, name: string) =>
-    fetchApi<Deployment>(`/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`),
+    clusterFetch<Deployment>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`),
 
   create: (cluster: string, namespace: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/deployments`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   update: (cluster: string, namespace: string, name: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
   delete: (cluster: string, namespace: string, name: string) =>
-    fetchApi<void>(`/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`, {
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}`, {
       method: 'DELETE',
     }),
 
   getPods: (cluster: string, namespace: string, name: string) =>
-    fetchApi<Pod[]>(`/clusters/${cluster}/namespaces/${namespace}/deployments/${name}/pods`),
+    clusterFetch<Pod[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}/pods`),
 };
 
 // Pod APIs
@@ -239,18 +254,40 @@ export const podApi = {
     const searchParams = new URLSearchParams();
     if (params?.deployment) searchParams.set('deployment', params.deployment);
     const query = searchParams.toString();
-    return fetchApi<Pod[]>(
+    return clusterFetch<Pod[]>(
+      cluster,
       `/clusters/${cluster}/namespaces/${namespace}/pods${query ? `?${query}` : ''}`
     );
   },
 
   get: (cluster: string, namespace: string, name: string) =>
-    fetchApi<Pod>(`/clusters/${cluster}/namespaces/${namespace}/pods/${name}`),
+    clusterFetch<Pod>(cluster, `/clusters/${cluster}/namespaces/${namespace}/pods/${name}`),
 
   delete: (cluster: string, namespace: string, name: string) =>
-    fetchApi<void>(`/clusters/${cluster}/namespaces/${namespace}/pods/${name}`, {
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/pods/${name}`, {
       method: 'DELETE',
     }),
+
+  getLogs: (cluster: string, namespace: string, name: string, params?: {
+    container?: string;
+    tail_lines?: number;
+    previous?: boolean;
+    timestamps?: boolean;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.container) searchParams.set('container', params.container);
+    if (params?.tail_lines) searchParams.set('tail_lines', params.tail_lines.toString());
+    if (params?.previous) searchParams.set('previous', 'true');
+    if (params?.timestamps) searchParams.set('timestamps', 'true');
+    const query = searchParams.toString();
+    return clusterFetch<PodLogResponse>(
+      cluster,
+      `/clusters/${cluster}/namespaces/${namespace}/pods/${name}/logs${query ? `?${query}` : ''}`
+    );
+  },
+
+  getEvents: (cluster: string, namespace: string, name: string) =>
+    clusterFetch<PodEvent[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/pods/${name}/events`),
 };
 
 // History APIs
@@ -267,21 +304,24 @@ export const historyApi = {
     if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
 
     const query = searchParams.toString();
-    return fetchApi<PaginatedResponse<HistoryRecord>>(
+    return clusterFetch<PaginatedResponse<HistoryRecord>>(
+      cluster,
       `/clusters/${cluster}/namespaces/${namespace}/histories${query ? `?${query}` : ''}`
     );
   },
 
   get: (cluster: string, namespace: string, id: number) =>
-    fetchApi<HistoryRecord>(`/clusters/${cluster}/namespaces/${namespace}/histories/${id}`),
+    clusterFetch<HistoryRecord>(cluster, `/clusters/${cluster}/namespaces/${namespace}/histories/${id}`),
 
   diff: (cluster: string, namespace: string, sourceVersion: number, targetVersion: number) =>
-    fetchApi<HistoryDiff>(
+    clusterFetch<HistoryDiff>(
+      cluster,
       `/clusters/${cluster}/namespaces/${namespace}/histories/diff?source_version=${sourceVersion}&target_version=${targetVersion}`
     ),
 
   rollback: (cluster: string, namespace: string, id: number, operator?: string) =>
-    fetchApi<{ success: boolean; message: string; restored_version: number; new_version: number }>(
+    clusterFetch<{ success: boolean; message: string; restored_version: number; new_version: number }>(
+      cluster,
       `/clusters/${cluster}/namespaces/${namespace}/histories/${id}/rollback`,
       {
         method: 'POST',
@@ -293,25 +333,25 @@ export const historyApi = {
 // HPA APIs
 export const hpaApi = {
   list: (cluster: string, namespace: string) =>
-    fetchApi<HPA[]>(`/clusters/${cluster}/namespaces/${namespace}/hpas`),
+    clusterFetch<HPA[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas`),
 
   get: (cluster: string, namespace: string, name: string) =>
-    fetchApi<HPA>(`/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`),
+    clusterFetch<HPA>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`),
 
   create: (cluster: string, namespace: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/hpas`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   update: (cluster: string, namespace: string, name: string, data: ResourceRequest) =>
-    fetchApi<K8sResource>(`/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`, {
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
   delete: (cluster: string, namespace: string, name: string) =>
-    fetchApi<void>(`/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`, {
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`, {
       method: 'DELETE',
     }),
 };

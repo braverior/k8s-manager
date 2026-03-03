@@ -88,6 +88,7 @@ func cleanSystemFields(data map[string]interface{}) {
 		delete(metadata, "selfLink")
 		delete(metadata, "finalizers")
 		delete(metadata, "ownerReferences")
+		delete(metadata, "annotations") // 删除所有注解
 	}
 }
 

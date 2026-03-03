@@ -67,6 +67,7 @@ export interface BatchPermissionResult {
 export interface Cluster {
   name: string;
   description: string;
+  api_server: string;
   status: 'connected' | 'disconnected' | 'unknown';
 }
 
@@ -130,8 +131,14 @@ export interface PodContainer {
   ready: boolean;
   restart_count: number;
   state: string;
+  reason?: string;
+  message?: string;
   image: string;
   started_at?: string;
+  exit_code?: number | null;
+  last_state?: string;
+  last_reason?: string;
+  last_message?: string;
 }
 
 export interface PodContainerMetrics {
@@ -142,6 +149,14 @@ export interface PodContainerMetrics {
 
 export interface PodMetrics {
   containers: PodContainerMetrics[];
+}
+
+export interface PodCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  last_transition_time?: string;
 }
 
 export interface Pod {
@@ -156,7 +171,24 @@ export interface Pod {
   restart_count: number;
   created_at: string;
   containers: PodContainer[];
+  conditions?: PodCondition[];
   metrics?: PodMetrics;
+}
+
+export interface PodLogResponse {
+  pod_name: string;
+  container_name: string;
+  logs: string;
+}
+
+export interface PodEvent {
+  type: string;
+  reason: string;
+  message: string;
+  source: string;
+  count: number;
+  first_time: string;
+  last_time: string;
 }
 
 // Dashboard Types
@@ -346,3 +378,41 @@ export interface NodeDetail {
   labels: Record<string, string>;
   pod_count: number;
 }
+
+// WebSocket Terminal Message Types
+export interface TerminalInputMessage {
+  type: 'input';
+  data: string;
+}
+
+export interface TerminalOutputMessage {
+  type: 'output';
+  data: string;
+}
+
+export interface TerminalResizeMessage {
+  type: 'resize';
+  cols: number;
+  rows: number;
+}
+
+export interface TerminalPingMessage {
+  type: 'ping';
+}
+
+export interface TerminalPongMessage {
+  type: 'pong';
+}
+
+export interface TerminalErrorMessage {
+  type: 'error';
+  data: string;
+}
+
+export type TerminalMessage =
+  | TerminalInputMessage
+  | TerminalOutputMessage
+  | TerminalResizeMessage
+  | TerminalPingMessage
+  | TerminalPongMessage
+  | TerminalErrorMessage;

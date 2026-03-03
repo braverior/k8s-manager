@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { hpaApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
+import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +51,7 @@ spec:
 
 export function HPAPage() {
   const { selectedCluster, selectedNamespace } = useCluster();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
 
   const [hpas, setHpas] = useState<HPA[]>([]);
@@ -72,6 +74,7 @@ export function HPAPage() {
       const data = await hpaApi.list(selectedCluster, selectedNamespace);
       setHpas(data || []);
     } catch (err) {
+      setHpas([]);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch HPAs',
@@ -283,6 +286,7 @@ export function HPAPage() {
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
+                      {isAdmin && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -295,6 +299,7 @@ export function HPAPage() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
+                      )}
                     </div>
                   </CardTitle>
                 </CardHeader>

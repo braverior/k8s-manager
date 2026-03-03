@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api';
+import { getClusters } from '@/config/clusters';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Layers } from 'lucide-react';
+
+function getAuthApiServer(): string {
+  const clusters = getClusters();
+  if (clusters.length === 0) {
+    throw new Error('No clusters configured');
+  }
+  return clusters[0].api_server;
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -53,7 +62,7 @@ export function LoginPage() {
     setError(null);
 
     try {
-      const response = await authApi.feishuLogin(code, state);
+      const response = await authApi.feishuLogin(getAuthApiServer(), code, state);
       login(response.token, response.user);
       sessionStorage.removeItem('oauth_state');
       navigate('/', { replace: true });
@@ -69,7 +78,7 @@ export function LoginPage() {
     setError(null);
 
     try {
-      const config = await authApi.getFeishuConfig();
+      const config = await authApi.getFeishuConfig(getAuthApiServer());
 
       // Generate random state for CSRF protection
       const state = Math.random().toString(36).substring(2, 15);

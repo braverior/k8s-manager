@@ -33,7 +33,7 @@ type UserResponse struct {
 	Department   *DepartmentInfo     `json:"department"`
 	Role         string              `json:"role"`
 	IsAdmin      bool                `json:"is_admin"`
-	Permissions  []ClusterPermission `json:"permissions,omitempty"`
+	Permissions  []ClusterPermission `json:"permissions"`
 	Status       string              `json:"status,omitempty"`
 	LastLoginAt  *time.Time          `json:"last_login_at,omitempty"`
 	CreatedAt    *time.Time          `json:"created_at,omitempty"`

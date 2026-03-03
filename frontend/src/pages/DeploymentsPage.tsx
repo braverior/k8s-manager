@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { deploymentApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
+import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,7 @@ function parseDeploymentYaml(yaml: string): DeploymentInfo {
 
 export function DeploymentsPage() {
   const { selectedCluster, selectedNamespace } = useCluster();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -97,6 +99,7 @@ export function DeploymentsPage() {
       const data = await deploymentApi.list(selectedCluster, selectedNamespace);
       setDeployments(data || []);
     } catch (err) {
+      setDeployments([]);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch Deployments',
@@ -275,6 +278,7 @@ export function DeploymentsPage() {
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
+                      {isAdmin && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -287,6 +291,7 @@ export function DeploymentsPage() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
+                      )}
                     </div>
                   </CardTitle>
                 </CardHeader>

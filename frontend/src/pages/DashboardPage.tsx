@@ -94,7 +94,7 @@ function StatCard({ title, value, icon: Icon, subValue, color = 'text-primary' }
 }
 
 export function DashboardPage() {
-  const { selectedCluster } = useCluster();
+  const { selectedCluster, clusters } = useCluster();
   const { toast } = useToast();
 
   const [dashboard, setDashboard] = useState<ClusterDashboard | null>(null);
@@ -107,6 +107,7 @@ export function DashboardPage() {
       const data = await clusterApi.getDashboard(selectedCluster);
       setDashboard(data);
     } catch (err) {
+      setDashboard(null);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch dashboard',
@@ -120,6 +121,8 @@ export function DashboardPage() {
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  const clusterInfo = clusters.find((c) => c.name === selectedCluster);
 
   const quickLinks = [
     { title: 'Nodes', icon: Server, href: '/nodes', color: 'text-blue-500' },
@@ -162,6 +165,9 @@ export function DashboardPage() {
             <Layers className="w-7 h-7 text-primary" />
             {dashboard.cluster_name}
           </h1>
+          {clusterInfo?.description && (
+            <p className="text-sm text-muted-foreground mt-1">{clusterInfo.description}</p>
+          )}
           <div className="flex items-center gap-2 mt-2">
             <Badge variant={dashboard.status === 'connected' ? 'success' : 'destructive'}>
               {dashboard.status}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -127,6 +128,42 @@ func (o *PodOperator) ListMetrics(ctx context.Context, namespace string) ([]PodM
 	return result, nil
 }
 
+// GetLogs 获取 Pod 容器日志
+func (o *PodOperator) GetLogs(ctx context.Context, namespace, name, container string, tailLines int64, previous bool, timestamps bool) (string, error) {
+	opts := &corev1.PodLogOptions{
+		Container:  container,
+		Previous:   previous,
+		Timestamps: timestamps,
+	}
+	if tailLines > 0 {
+		opts.TailLines = &tailLines
+	}
+
+	req := o.client.CoreV1().Pods(namespace).GetLogs(name, opts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer stream.Close()
+
+	data, err := io.ReadAll(stream)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// GetEvents 获取 Pod 相关事件
+func (o *PodOperator) GetEvents(ctx context.Context, namespace, name string) ([]corev1.Event, error) {
+	events, err := o.client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Pod", name),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return events.Items, nil
+}
+
 func PodToJSON(pod *corev1.Pod) (string, error) {
 	data, err := json.MarshalIndent(pod, "", "  ")
 	if err != nil {
@@ -151,19 +188,16 @@ func formatPodCPU(q *resource.Quantity) string {
 	return fmt.Sprintf("%dm", milliValue)
 }
 
-// formatPodMemory 格式化内存为易读格式
+// formatPodMemory 格式化内存为 Mi 单位
 func formatPodMemory(q *resource.Quantity) string {
 	if q == nil {
 		return "0"
 	}
 	bytes := q.Value()
-	if bytes >= 1024*1024*1024 {
-		return q.String()
-	}
 	mi := float64(bytes) / (1024 * 1024)
 	if mi >= 1024 {
 		gi := mi / 1024
-		return resource.NewQuantity(int64(gi*1024*1024*1024), resource.BinarySI).String()
+		return fmt.Sprintf("%.1fGi", gi)
 	}
-	return resource.NewQuantity(int64(mi*1024*1024), resource.BinarySI).String()
+	return fmt.Sprintf("%.0fMi", mi)
 }

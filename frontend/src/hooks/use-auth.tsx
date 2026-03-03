@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { authApi } from '@/api';
+import { getClusters } from '@/config/clusters';
 import type { User } from '@/types';
 
 interface AuthContextType {
@@ -16,6 +17,15 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Auth API uses the first cluster's api_server
+function getAuthApiServer(): string {
+  const clusters = getClusters();
+  if (clusters.length === 0) {
+    throw new Error('No clusters configured');
+  }
+  return clusters[0].api_server;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -47,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await authApi.logout();
+      await authApi.logout(getAuthApiServer());
     } catch {
       // Ignore logout errors
     } finally {
@@ -61,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     if (!token) return;
     try {
-      const userData = await authApi.getMe();
+      const userData = await authApi.getMe(getAuthApiServer());
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
     } catch {

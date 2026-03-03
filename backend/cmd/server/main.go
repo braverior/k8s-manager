@@ -72,6 +72,7 @@ func main() {
 	nodeService := service.NewNodeService(clientManager)
 	authService := service.NewAuthService(cfg, userRepo, permissionRepo)
 	userService := service.NewUserService(userRepo, permissionRepo)
+	terminalService := service.NewTerminalService(clientManager)
 
 	// 初始化 Handlers
 	clusterHandler := handler.NewClusterHandler(clusterService)
@@ -85,6 +86,7 @@ func main() {
 	nodeHandler := handler.NewNodeHandler(nodeService)
 	authHandler := handler.NewAuthHandler(authService)
 	adminHandler := handler.NewAdminHandler(userService)
+	terminalHandler := handler.NewTerminalHandler(terminalService, authService, userService)
 
 	// 设置路由
 	r := router.NewRouter(
@@ -99,6 +101,7 @@ func main() {
 		nodeHandler,
 		authHandler,
 		adminHandler,
+		terminalHandler,
 		authService,
 		userService,
 	)

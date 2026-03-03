@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react';
 import { clusterApi } from '@/api';
+import { getClusters } from '@/config/clusters';
 import { useAuth } from '@/hooks/use-auth';
 import type { Cluster, Namespace } from '@/types';
 
@@ -19,12 +20,12 @@ const ClusterContext = createContext<ClusterContextType | null>(null);
 
 export function ClusterProvider({ children }: { children: ReactNode }) {
   const { user, hasClusterPermission, hasNamespacePermission } = useAuth();
-  const [allClusters, setAllClusters] = useState<Cluster[]>([]);
+  const [allClusters] = useState<Cluster[]>(() => getClusters());
   const [allNamespaces, setAllNamespaces] = useState<Namespace[]>([]);
   const [selectedCluster, setSelectedCluster] = useState<string>('');
   const [selectedNamespace, setSelectedNamespace] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading] = useState(false);
+  const [error] = useState<string | null>(null);
 
   // Filter clusters based on permissions
   const clusters = allClusters.filter((c) => hasClusterPermission(c.name));
@@ -34,19 +35,6 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
     hasNamespacePermission(selectedCluster, ns.name)
   );
 
-  const fetchClusters = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await clusterApi.list();
-      setAllClusters(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch clusters');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const fetchNamespaces = useCallback(async (cluster: string) => {
     if (!cluster) return;
     try {
@@ -54,13 +42,9 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
       setAllNamespaces(data || []);
     } catch (err) {
       console.error('Failed to fetch namespaces:', err);
+      setAllNamespaces([]);
     }
   }, []);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchClusters();
-  }, [fetchClusters]);
 
   // Auto-select first available cluster when clusters change or user permissions change
   useEffect(() => {
@@ -95,11 +79,10 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
   }, [namespaces, selectedNamespace]);
 
   const refresh = useCallback(async () => {
-    await fetchClusters();
     if (selectedCluster) {
       await fetchNamespaces(selectedCluster);
     }
-  }, [fetchClusters, fetchNamespaces, selectedCluster]);
+  }, [fetchNamespaces, selectedCluster]);
 
   return (
     <ClusterContext.Provider

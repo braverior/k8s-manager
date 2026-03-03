@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { configMapApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
+import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,7 @@ data:
 
 export function ConfigMapsPage() {
   const { selectedCluster, selectedNamespace } = useCluster();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
 
   const [configMaps, setConfigMaps] = useState<K8sResource[]>([]);
@@ -55,6 +57,7 @@ export function ConfigMapsPage() {
       const data = await configMapApi.list(selectedCluster, selectedNamespace);
       setConfigMaps(data || []);
     } catch (err) {
+      setConfigMaps([]);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch ConfigMaps',
@@ -240,6 +243,7 @@ export function ConfigMapsPage() {
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
+                      {isAdmin && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -252,6 +256,7 @@ export function ConfigMapsPage() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
+                      )}
                     </div>
                   </CardTitle>
                 </CardHeader>

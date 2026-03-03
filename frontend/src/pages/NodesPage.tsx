@@ -58,6 +58,7 @@ export function NodesPage() {
       const data = await nodeApi.list(selectedCluster);
       setNodes(data || []);
     } catch (err) {
+      setNodes([]);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch nodes',

@@ -20,6 +20,7 @@ type Router struct {
 	nodeHandler       *handler.NodeHandler
 	authHandler       *handler.AuthHandler
 	adminHandler      *handler.AdminHandler
+	terminalHandler   *handler.TerminalHandler
 	authSvc           *service.AuthService
 	userSvc           *service.UserService
 }
@@ -36,6 +37,7 @@ func NewRouter(
 	nodeHandler *handler.NodeHandler,
 	authHandler *handler.AuthHandler,
 	adminHandler *handler.AdminHandler,
+	terminalHandler *handler.TerminalHandler,
 	authSvc *service.AuthService,
 	userSvc *service.UserService,
 ) *Router {
@@ -51,6 +53,7 @@ func NewRouter(
 		nodeHandler:       nodeHandler,
 		authHandler:       authHandler,
 		adminHandler:      adminHandler,
+		terminalHandler:   terminalHandler,
 		authSvc:           authSvc,
 		userSvc:           userSvc,
 	}
@@ -79,6 +82,10 @@ func (r *Router) Setup(mode string) *gin.Engine {
 			auth.GET("/feishu/config", r.authHandler.GetFeishuConfig)
 			auth.POST("/feishu/login", r.authHandler.FeishuLogin)
 		}
+
+		// WebSocket 终端接口（认证通过 URL 参数 token，不使用 Header 中间件）
+		// 因为 WebSocket 不支持自定义请求头，所以单独处理认证
+		v1.GET("/clusters/:cluster/namespaces/:namespace/pods/:name/exec", r.terminalHandler.Exec)
 
 		// 需要认证的认证接口
 		authProtected := v1.Group("/auth")
@@ -163,6 +170,13 @@ func (r *Router) Setup(mode string) *gin.Engine {
 					pods.GET("", r.podHandler.List)
 					pods.GET("/:name", r.podHandler.Get)
 					pods.DELETE("/:name", r.podHandler.Delete) // 删除 Pod（用于重启）
+					// 获取容器列表
+					pods.GET("/:name/containers", r.terminalHandler.GetContainers)
+					// Pod 日志
+					pods.GET("/:name/logs", r.podHandler.GetLogs)
+					// Pod 事件
+					pods.GET("/:name/events", r.podHandler.GetEvents)
+					// 注意: exec 路由在上面单独注册，不经过 Auth 中间件（WebSocket 通过 URL 参数认证）
 				}
 
 				// Services

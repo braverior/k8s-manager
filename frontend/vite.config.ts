@@ -15,11 +15,12 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:30001',
         changeOrigin: true,
+        ws: true, // Enable WebSocket proxy
       },
     },
   },
   optimizeDeps: {
-    include: ['monaco-editor'],
+    include: ['monaco-editor', '@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
   },
   build: {
     rollupOptions: {

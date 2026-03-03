@@ -31,7 +31,8 @@ func (s *UserService) List(ctx context.Context, req *dto.UserListRequest) ([]dto
 
 	result := make([]dto.UserResponse, 0, len(users))
 	for _, user := range users {
-		result = append(result, *s.buildUserResponse(&user, nil))
+		permissions, _ := s.getUserPermissions(ctx, user.ID)
+		result = append(result, *s.buildUserResponse(&user, permissions))
 	}
 
 	return result, total, nil
@@ -225,6 +226,10 @@ func (s *UserService) getUserPermissions(ctx context.Context, userID string) ([]
 
 // buildUserResponse 构建用户响应
 func (s *UserService) buildUserResponse(user *entity.User, permissions []dto.ClusterPermission) *dto.UserResponse {
+	// 确保 permissions 不为 nil，避免 JSON 输出 null
+	if permissions == nil {
+		permissions = []dto.ClusterPermission{}
+	}
 	resp := &dto.UserResponse{
 		ID:         user.ID,
 		Name:       user.Name,
