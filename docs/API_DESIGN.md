@@ -805,6 +805,195 @@ DELETE /clusters/:cluster/namespaces/:namespace/pods/:name
 
 > **说明**：删除由 Deployment/ReplicaSet 管理的 Pod 会自动创建新的 Pod，达到重启效果。
 
+### 获取 Pod 日志
+
+```
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/logs
+```
+
+**查询参数：**
+| 参数 | 类型 | 是否必填 | 描述 |
+|------|------|----------|------|
+| container | string | 否 | 容器名称（不指定则默认第一个容器） |
+| tail_lines | int | 否 | 返回的日志行数（默认：200） |
+| previous | bool | 否 | 是否获取上一次容器的日志（默认：false） |
+| timestamps | bool | 否 | 是否包含时间戳（默认：false） |
+
+**示例：**
+```
+GET /clusters/local/namespaces/default/pods/nginx-abc12/logs?container=nginx&tail_lines=100&timestamps=true
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "pod_name": "nginx-7c5b4bf8b9-abc12",
+    "container_name": "nginx",
+    "logs": "2024-01-15T10:30:00Z Starting nginx...\n2024-01-15T10:30:01Z nginx is ready\n..."
+  }
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| pod_name | string | Pod 名称 |
+| container_name | string | 容器名称 |
+| logs | string | 日志内容（纯文本） |
+
+---
+
+### 获取 Pod 事件
+
+```
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/events
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "type": "Normal",
+      "reason": "Scheduled",
+      "message": "Successfully assigned default/nginx-abc12 to node-1",
+      "source": "default-scheduler",
+      "count": 1,
+      "first_time": "2024-01-15T10:30:00Z",
+      "last_time": "2024-01-15T10:30:00Z"
+    },
+    {
+      "type": "Normal",
+      "reason": "Pulled",
+      "message": "Container image \"nginx:1.21\" already present on machine",
+      "source": "kubelet/node-1",
+      "count": 1,
+      "first_time": "2024-01-15T10:30:01Z",
+      "last_time": "2024-01-15T10:30:01Z"
+    },
+    {
+      "type": "Normal",
+      "reason": "Started",
+      "message": "Started container nginx",
+      "source": "kubelet/node-1",
+      "count": 1,
+      "first_time": "2024-01-15T10:30:02Z",
+      "last_time": "2024-01-15T10:30:02Z"
+    }
+  ]
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| type | string | 事件类型（Normal/Warning） |
+| reason | string | 事件原因 |
+| message | string | 事件详细消息 |
+| source | string | 事件来源（组件/节点） |
+| count | int | 事件发生次数 |
+| first_time | string | 首次发生时间 |
+| last_time | string | 最后发生时间 |
+
+---
+
+### 获取 Pod 容器列表
+
+```
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/containers
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "containers": [
+      {
+        "name": "nginx",
+        "image": "nginx:1.21",
+        "state": "Running"
+      },
+      {
+        "name": "sidecar",
+        "image": "busybox:latest",
+        "state": "Running"
+      }
+    ]
+  }
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| containers | array | 容器信息列表 |
+| containers[].name | string | 容器名称 |
+| containers[].image | string | 容器镜像 |
+| containers[].state | string | 容器状态（Running/Waiting/Terminated） |
+
+---
+
+### Pod 终端（WebSocket）
+
+通过 WebSocket 连接到 Pod 容器执行命令。
+
+```
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/exec (WebSocket)
+```
+
+> **注意**：此接口通过 URL 参数传递 Token 进行认证（WebSocket 不支持自定义请求头），不经过标准的 Auth 中间件。
+
+**查询参数：**
+| 参数 | 类型 | 是否必填 | 描述 |
+|------|------|----------|------|
+| token | string | 是 | JWT Token（通过 URL 参数传递） |
+| container | string | 否 | 容器名称 |
+| command | string | 否 | 执行的命令（默认：`/bin/bash`） |
+
+**连接示例：**
+```
+ws://localhost:8080/api/v1/clusters/local/namespaces/default/pods/nginx-abc12/exec?token=eyJhbG...&container=nginx&command=/bin/bash
+```
+
+**WebSocket 消息格式：**
+
+所有消息使用 JSON 格式：
+
+```json
+{
+  "type": "input|output|resize|ping|pong|error",
+  "data": "消息内容",
+  "cols": 80,
+  "rows": 24
+}
+```
+
+**消息类型说明：**
+| 类型 | 方向 | 描述 |
+|------|------|------|
+| input | 客户端 → 服务端 | 用户输入的命令/字符 |
+| output | 服务端 → 客户端 | 命令执行输出 |
+| resize | 客户端 → 服务端 | 终端窗口大小变更（需要 `cols` 和 `rows` 字段） |
+| ping | 客户端 → 服务端 | 心跳检测 |
+| pong | 服务端 → 客户端 | 心跳响应 |
+| error | 服务端 → 客户端 | 错误消息 |
+
+**错误响应（连接建立前）：**
+
+| 错误码 | HTTP 状态码 | 描述 |
+|--------|-------------|------|
+| 401 | 401 | Token 无效或已过期 |
+| 4005 | 403 | 无权限访问该集群 |
+| 4006 | 403 | 无权限访问该命名空间 |
+| 4014 | 403 | 用户已被禁用 |
+
 ---
 
 ## Service 管理
