@@ -119,13 +119,13 @@ func (o *HPAOperator) List(ctx context.Context, namespace string) ([]autoscaling
 
 func (o *HPAOperator) listWithFallback(ctx context.Context, namespace string) ([]autoscalingv2.HorizontalPodAutoscaler, error) {
 	// 先尝试 v2
-	list, err := o.client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})
+	list, err := o.client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	if err == nil {
 		return list.Items, nil
 	}
 
 	// v2 失败，尝试 v2beta2
-	listBeta, err := o.client.AutoscalingV2beta2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})
+	listBeta, err := o.client.AutoscalingV2beta2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		return nil, err
 	}
@@ -147,9 +147,9 @@ func (o *HPAOperator) listDynamic(ctx context.Context, namespace string) ([]auto
 	var err error
 
 	if namespace == "" {
-		list, err = o.dynamicClient.Resource(o.gvr).List(ctx, metav1.ListOptions{})
+		list, err = o.dynamicClient.Resource(o.gvr).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	} else {
-		list, err = o.dynamicClient.Resource(o.gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		list, err = o.dynamicClient.Resource(o.gvr).Namespace(namespace).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	}
 	if err != nil {
 		return nil, err

@@ -455,6 +455,7 @@ GET /clusters/:cluster/nodes/:name
 - `metadata.selfLink` - 自链接
 - `metadata.finalizers` - 终结器
 - `metadata.ownerReferences` - 所有者引用
+- `metadata.annotations` - 注解
 - `status` - 状态信息
 
 > **说明**：返回的 YAML 可以直接用于修改后重新提交，无需手动删除系统字段。
@@ -805,23 +806,61 @@ DELETE /clusters/:cluster/namespaces/:namespace/pods/:name
 
 > **说明**：删除由 Deployment/ReplicaSet 管理的 Pod 会自动创建新的 Pod，达到重启效果。
 
+### 获取 Pod 容器列表
+
+```
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/containers
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "containers": [
+      {
+        "name": "nginx",
+        "image": "nginx:1.21",
+        "state": "Running"
+      },
+      {
+        "name": "sidecar",
+        "image": "envoy:latest",
+        "state": "Running"
+      }
+    ]
+  }
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| containers | array | 容器列表 |
+| containers[].name | string | 容器名称 |
+| containers[].image | string | 容器镜像 |
+| containers[].state | string | 容器状态（Running/Waiting/Terminated/Unknown） |
+
 ### 获取 Pod 日志
+
+获取 Pod 容器的 stdout/stderr 输出日志。
 
 ```
 GET /clusters/:cluster/namespaces/:namespace/pods/:name/logs
 ```
 
 **查询参数：**
-| 参数 | 类型 | 是否必填 | 描述 |
-|------|------|----------|------|
-| container | string | 否 | 容器名称（不指定则默认第一个容器） |
-| tail_lines | int | 否 | 返回的日志行数（默认：200） |
-| previous | bool | 否 | 是否获取上一次容器的日志（默认：false） |
-| timestamps | bool | 否 | 是否包含时间戳（默认：false） |
+| 参数 | 类型 | 是否必填 | 默认值 | 描述 |
+|------|------|----------|--------|------|
+| container | string | 否 | 第一个容器 | 容器名称 |
+| tail_lines | int | 否 | 200 | 返回最后 N 行日志 |
+| previous | bool | 否 | false | 是否获取上一次容器实例的日志（用于查看崩溃前的输出） |
+| timestamps | bool | 否 | false | 是否在每行日志前添加时间戳 |
 
 **示例：**
 ```
-GET /clusters/local/namespaces/default/pods/nginx-abc12/logs?container=nginx&tail_lines=100&timestamps=true
+GET /clusters/local/namespaces/default/pods/nginx-xxx/logs?container=nginx&tail_lines=100&previous=false
 ```
 
 **响应示例：**
@@ -844,9 +883,16 @@ GET /clusters/local/namespaces/default/pods/nginx-abc12/logs?container=nginx&tai
 | container_name | string | 容器名称 |
 | logs | string | 日志内容（纯文本） |
 
+> **注意**：
+> - `previous=true` 可用于查看 CrashLoopBackOff 状态下容器崩溃前的日志输出
+> - 日志内容为容器的 stdout/stderr 输出
+> - 如果容器尚未启动或已被清理，可能无法获取到日志
+
 ---
 
 ### 获取 Pod 事件
+
+获取与 Pod 相关的 Kubernetes 事件，用于诊断 Pod 异常原因。
 
 ```
 GET /clusters/:cluster/namespaces/:namespace/pods/:name/events
@@ -861,7 +907,7 @@ GET /clusters/:cluster/namespaces/:namespace/pods/:name/events
     {
       "type": "Normal",
       "reason": "Scheduled",
-      "message": "Successfully assigned default/nginx-abc12 to node-1",
+      "message": "Successfully assigned default/nginx-xxx to node-1",
       "source": "default-scheduler",
       "count": 1,
       "first_time": "2024-01-15T10:30:00Z",
@@ -869,21 +915,21 @@ GET /clusters/:cluster/namespaces/:namespace/pods/:name/events
     },
     {
       "type": "Normal",
-      "reason": "Pulled",
-      "message": "Container image \"nginx:1.21\" already present on machine",
-      "source": "kubelet/node-1",
+      "reason": "Pulling",
+      "message": "Pulling image \"nginx:1.21\"",
+      "source": "kubelet",
       "count": 1,
       "first_time": "2024-01-15T10:30:01Z",
       "last_time": "2024-01-15T10:30:01Z"
     },
     {
-      "type": "Normal",
-      "reason": "Started",
-      "message": "Started container nginx",
-      "source": "kubelet/node-1",
-      "count": 1,
-      "first_time": "2024-01-15T10:30:02Z",
-      "last_time": "2024-01-15T10:30:02Z"
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container",
+      "source": "kubelet",
+      "count": 5,
+      "first_time": "2024-01-15T10:31:00Z",
+      "last_time": "2024-01-15T10:35:00Z"
     }
   ]
 }
@@ -893,106 +939,195 @@ GET /clusters/:cluster/namespaces/:namespace/pods/:name/events
 | 字段 | 类型 | 描述 |
 |------|------|------|
 | type | string | 事件类型（Normal/Warning） |
-| reason | string | 事件原因 |
-| message | string | 事件详细消息 |
-| source | string | 事件来源（组件/节点） |
+| reason | string | 事件原因（如 Scheduled, Pulling, Failed, BackOff, Unhealthy, OOMKilling 等） |
+| message | string | 事件详细描述 |
+| source | string | 事件来源组件（如 kubelet, default-scheduler） |
 | count | int | 事件发生次数 |
-| first_time | string | 首次发生时间 |
-| last_time | string | 最后发生时间 |
+| first_time | string | 事件首次发生时间 |
+| last_time | string | 事件最近发生时间 |
+
+**常见事件原因：**
+| Reason | Type | 描述 |
+|--------|------|------|
+| Scheduled | Normal | Pod 被成功调度到节点 |
+| FailedScheduling | Warning | 调度失败（资源不足、节点亲和性不满足等） |
+| Pulling / Pulled | Normal | 镜像拉取中/完成 |
+| Failed | Warning | 镜像拉取失败、容器启动失败 |
+| BackOff | Warning | 容器崩溃后重启退避（CrashLoopBackOff） |
+| Unhealthy | Warning | 健康检查（Liveness/Readiness Probe）失败 |
+| OOMKilling | Warning | 容器因内存溢出被终止 |
+| Killing | Normal | 容器被终止（更新或删除时） |
 
 ---
 
-### 获取 Pod 容器列表
+### Pod 详情增强字段
 
-```
-GET /clusters/:cluster/namespaces/:namespace/pods/:name/containers
+获取 Pod 详情时（`GET /pods/:name`），响应中包含以下增强字段：
+
+**增强的 ContainerStatus 字段：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| message | string | 容器状态详细描述（如 "Back-off pulling image"、"OOMKilled" 详细信息） |
+| exit_code | int | 容器退出码（仅 Terminated 状态，如 137=OOMKilled, 1=应用错误） |
+| last_state | string | 上一次容器状态（Running/Waiting/Terminated） |
+| last_reason | string | 上一次容器终止原因 |
+| last_message | string | 上一次容器终止详细信息 |
+
+**新增 Pod Conditions 字段：**
+
+`conditions` 字段反映 Pod 生命周期各阶段的状态，有助于定位 Pod 无法启动的原因。
+
+```json
+{
+  "conditions": [
+    {
+      "type": "PodScheduled",
+      "status": "True",
+      "reason": "",
+      "message": "",
+      "last_transition_time": "2024-01-15T10:30:00Z"
+    },
+    {
+      "type": "ContainersReady",
+      "status": "False",
+      "reason": "ContainersNotReady",
+      "message": "containers with unready status: [nginx]",
+      "last_transition_time": "2024-01-15T10:30:05Z"
+    }
+  ]
+}
 ```
 
-**响应示例：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| conditions | array | Pod 条件列表 |
+| conditions[].type | string | 条件类型（PodScheduled, Initialized, ContainersReady, Ready） |
+| conditions[].status | string | 状态（True/False/Unknown） |
+| conditions[].reason | string | 原因 |
+| conditions[].message | string | 详细描述 |
+| conditions[].last_transition_time | string | 最后状态变更时间 |
+
+**完整的 Pod 详情响应示例：**
 ```json
 {
   "code": 0,
   "message": "success",
   "data": {
+    "name": "nginx-7c5b4bf8b9-abc12",
+    "namespace": "default",
+    "phase": "Running",
+    "pod_ip": "10.244.1.10",
+    "host_ip": "192.168.1.100",
+    "node_name": "node-1",
+    "ready_containers": 1,
+    "total_containers": 1,
+    "restart_count": 3,
+    "created_at": "2024-01-15T10:30:00Z",
     "containers": [
       {
         "name": "nginx",
+        "ready": true,
+        "restart_count": 3,
+        "state": "Running",
+        "reason": "",
+        "message": "",
         "image": "nginx:1.21",
-        "state": "Running"
-      },
-      {
-        "name": "sidecar",
-        "image": "busybox:latest",
-        "state": "Running"
+        "started_at": "2024-01-15T10:35:00Z",
+        "exit_code": null,
+        "last_state": "Terminated",
+        "last_reason": "OOMKilled",
+        "last_message": ""
       }
-    ]
+    ],
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "",
+        "message": "",
+        "last_transition_time": "2024-01-15T10:35:05Z"
+      }
+    ],
+    "metrics": {
+      "containers": [
+        {
+          "name": "nginx",
+          "cpu": "10m",
+          "memory": "64Mi"
+        }
+      ]
+    }
   }
 }
 ```
 
-**字段说明：**
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| containers | array | 容器信息列表 |
-| containers[].name | string | 容器名称 |
-| containers[].image | string | 容器镜像 |
-| containers[].state | string | 容器状态（Running/Waiting/Terminated） |
-
 ---
 
-### Pod 终端（WebSocket）
-
-通过 WebSocket 连接到 Pod 容器执行命令。
+### Pod 终端交互（WebSocket Exec）
 
 ```
-GET /clusters/:cluster/namespaces/:namespace/pods/:name/exec (WebSocket)
+GET /clusters/:cluster/namespaces/:namespace/pods/:name/exec
 ```
 
-> **注意**：此接口通过 URL 参数传递 Token 进行认证（WebSocket 不支持自定义请求头），不经过标准的 Auth 中间件。
+**协议**：WebSocket
 
 **查询参数：**
 | 参数 | 类型 | 是否必填 | 描述 |
 |------|------|----------|------|
-| token | string | 是 | JWT Token（通过 URL 参数传递） |
-| container | string | 否 | 容器名称 |
-| command | string | 否 | 执行的命令（默认：`/bin/bash`） |
-
-**连接示例：**
-```
-ws://localhost:8080/api/v1/clusters/local/namespaces/default/pods/nginx-abc12/exec?token=eyJhbG...&container=nginx&command=/bin/bash
-```
+| token | string | 是 | JWT Token（用于认证） |
+| container | string | 否 | 容器名称（默认使用第一个容器） |
+| command | string | 否 | 执行的命令（默认 `/bin/sh`） |
 
 **WebSocket 消息格式：**
 
-所有消息使用 JSON 格式：
+所有消息均为 JSON 格式：
 
 ```json
-{
-  "type": "input|output|resize|ping|pong|error",
-  "data": "消息内容",
-  "cols": 80,
-  "rows": 24
-}
+// 用户输入
+{"type": "input", "data": "ls -la\r"}
+
+// 终端输出
+{"type": "output", "data": "total 64\ndrwxr-xr-x..."}
+
+// 调整终端大小
+{"type": "resize", "cols": 120, "rows": 40}
+
+// 心跳（客户端发送）
+{"type": "ping"}
+
+// 心跳响应（服务端返回）
+{"type": "pong"}
+
+// 错误消息
+{"type": "error", "data": "connection failed"}
 ```
 
 **消息类型说明：**
 | 类型 | 方向 | 描述 |
 |------|------|------|
-| input | 客户端 → 服务端 | 用户输入的命令/字符 |
-| output | 服务端 → 客户端 | 命令执行输出 |
-| resize | 客户端 → 服务端 | 终端窗口大小变更（需要 `cols` 和 `rows` 字段） |
+| input | 客户端 → 服务端 | 用户键盘输入，`data` 包含输入的字符 |
+| output | 服务端 → 客户端 | 终端输出，`data` 包含输出内容 |
+| resize | 客户端 → 服务端 | 调整终端大小，`cols` 为列数，`rows` 为行数 |
 | ping | 客户端 → 服务端 | 心跳检测 |
 | pong | 服务端 → 客户端 | 心跳响应 |
-| error | 服务端 → 客户端 | 错误消息 |
+| error | 服务端 → 客户端 | 错误消息，`data` 包含错误描述 |
 
-**错误响应（连接建立前）：**
+**使用示例（wscat）：**
 
-| 错误码 | HTTP 状态码 | 描述 |
-|--------|-------------|------|
-| 401 | 401 | Token 无效或已过期 |
-| 4005 | 403 | 无权限访问该集群 |
-| 4006 | 403 | 无权限访问该命名空间 |
-| 4014 | 403 | 用户已被禁用 |
+```bash
+# 连接终端
+wscat -c "ws://localhost:8080/api/v1/clusters/local/namespaces/default/pods/nginx-xxx/exec?token=your_jwt_token"
+
+# 指定容器和命令
+wscat -c "ws://localhost:8080/api/v1/clusters/local/namespaces/default/pods/nginx-xxx/exec?token=your_jwt_token&container=nginx&command=/bin/bash"
+```
+
+**注意事项：**
+1. 认证通过 URL 参数 `token` 传递，因为 WebSocket 不支持自定义请求头
+2. 需要对目标集群和命名空间有访问权限
+3. 如果不指定 `container`，将使用 Pod 中的第一个容器
+4. 建议客户端在连接后立即发送 `resize` 消息以设置终端大小
+5. 心跳间隔建议为 30 秒，超过 60 秒无响应连接将断开
 
 ---
 
@@ -1653,6 +1788,16 @@ Authorization: Bearer {token}
         "role": "user",
         "is_admin": false,
         "status": "active",
+        "permissions": [
+          {
+            "cluster": "production",
+            "namespaces": ["default", "app-prod"]
+          },
+          {
+            "cluster": "staging",
+            "namespaces": ["*"]
+          }
+        ],
         "last_login_at": "2024-01-15T10:30:00Z",
         "created_at": "2024-01-01T00:00:00Z"
       }
@@ -1665,6 +1810,9 @@ Authorization: Bearer {token}
 | 字段 | 类型 | 描述 |
 |------|------|------|
 | status | string | 用户状态（active-正常/disabled-禁用） |
+| permissions | array | 用户权限列表（集群和命名空间访问权限） |
+| permissions[].cluster | string | 可访问的集群名称 |
+| permissions[].namespaces | array | 可访问的命名空间列表，`["*"]` 表示所有命名空间 |
 | last_login_at | string | 最后登录时间 |
 | created_at | string | 首次登录时间（用户首次登录后自动创建） |
 

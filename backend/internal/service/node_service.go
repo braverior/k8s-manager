@@ -8,6 +8,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"golang.org/x/sync/errgroup"
 
 	"k8s_api_server/internal/k8s"
 	"k8s_api_server/internal/model/dto"
@@ -24,20 +26,54 @@ func NewNodeService(clientManager *k8s.ClientManager) *NodeService {
 	}
 }
 
-// List 获取节点列表
-func (s *NodeService) List(ctx context.Context, clusterName string) ([]dto.NodeListItem, error) {
+// List 获取节点列表（支持分页和搜索）
+func (s *NodeService) List(ctx context.Context, clusterName string, query *dto.ResourceQuery) ([]dto.NodeListItem, int64, error) {
 	client, err := s.clientManager.GetClient(clusterName)
 	if err != nil {
-		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
+		return nil, 0, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
 	}
 
-	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, apperrors.Wrap(err, 500, 500, "获取节点列表失败")
+	var nodes *corev1.NodeList
+	var pods *corev1.PodList
+	var nodeMetricsList *metricsv1beta1.NodeMetricsList
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	// 获取节点列表（fatal）
+	g.Go(func() error {
+		var err error
+		nodes, err = client.CoreV1().Nodes().List(gCtx, cachedListOptions())
+		if err != nil {
+			return apperrors.Wrap(err, 500, 500, "获取节点列表失败")
+		}
+		return nil
+	})
+
+	// 获取所有 Pod 统计每个节点的 Pod 数量（non-fatal）
+	g.Go(func() error {
+		podList, err := client.CoreV1().Pods("").List(gCtx, cachedListOptions())
+		if err == nil {
+			pods = podList
+		}
+		return nil
+	})
+
+	// 获取节点指标（non-fatal）
+	g.Go(func() error {
+		metricsClient, _ := s.clientManager.GetMetricsClient(clusterName)
+		if metricsClient != nil {
+			if ml, err := metricsClient.MetricsV1beta1().NodeMetricses().List(gCtx, cachedListOptions()); err == nil {
+				nodeMetricsList = ml
+			}
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, 0, err
 	}
 
-	// 获取所有 Pod 统计每个节点的 Pod 数量
-	pods, _ := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	// 构建 Pod 计数映射
 	podCountByNode := make(map[string]int)
 	if pods != nil {
 		for _, pod := range pods.Items {
@@ -47,16 +83,13 @@ func (s *NodeService) List(ctx context.Context, clusterName string) ([]dto.NodeL
 		}
 	}
 
-	// 获取节点指标
+	// 构建指标映射
 	metricsMap := make(map[string]*nodeMetrics)
-	metricsClient, _ := s.clientManager.GetMetricsClient(clusterName)
-	if metricsClient != nil {
-		if nodeMetricsList, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{}); err == nil {
-			for _, m := range nodeMetricsList.Items {
-				metricsMap[m.Name] = &nodeMetrics{
-					CPU:    m.Usage.Cpu(),
-					Memory: m.Usage.Memory(),
-				}
+	if nodeMetricsList != nil {
+		for _, m := range nodeMetricsList.Items {
+			metricsMap[m.Name] = &nodeMetrics{
+				CPU:    m.Usage.Cpu(),
+				Memory: m.Usage.Memory(),
 			}
 		}
 	}
@@ -101,7 +134,34 @@ func (s *NodeService) List(ctx context.Context, clusterName string) ([]dto.NodeL
 		result = append(result, item)
 	}
 
-	return result, nil
+	// 搜索过滤
+	if query != nil && query.Search != "" {
+		search := strings.ToLower(query.Search)
+		filtered := make([]dto.NodeListItem, 0)
+		for _, item := range result {
+			if strings.Contains(strings.ToLower(item.Name), search) {
+				filtered = append(filtered, item)
+			}
+		}
+		result = filtered
+	}
+
+	total := int64(len(result))
+
+	// 分页
+	if query != nil && query.Page > 0 && query.PageSize > 0 {
+		offset := (query.Page - 1) * query.PageSize
+		if offset >= len(result) {
+			return []dto.NodeListItem{}, total, nil
+		}
+		end := offset + query.PageSize
+		if end > len(result) {
+			end = len(result)
+		}
+		result = result[offset:end]
+	}
+
+	return result, total, nil
 }
 
 // Get 获取单个节点详情

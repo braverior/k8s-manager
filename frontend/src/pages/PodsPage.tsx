@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { podApi, deploymentApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Pod, PodLogResponse, PodEvent, Deployment } from '@/types';
+import type { Pod, PodLogResponse, PodEvent, Deployment, PaginatedResponse } from '@/types';
 import {
   Search,
   RefreshCw,
@@ -41,9 +41,13 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 type ViewMode = 'card' | 'table';
+
+const PAGE_SIZE = 50;
 
 export function PodsPage() {
   const { selectedCluster, selectedNamespace } = useCluster();
@@ -57,6 +61,11 @@ export function PodsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  // Debounce timer ref
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Dialog states
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -77,11 +86,24 @@ export function PodsPage() {
     if (!selectedCluster || !selectedNamespace) return;
     try {
       setLoading(true);
-      const params = deploymentFilter ? { deployment: deploymentFilter } : undefined;
-      const data = await podApi.list(selectedCluster, selectedNamespace, params);
-      setPods(data || []);
+      if (deploymentFilter) {
+        // Non-paginated path for deployment filter
+        const data = await podApi.list(selectedCluster, selectedNamespace, { deployment: deploymentFilter }) as Pod[];
+        setPods(data || []);
+        setTotal(data?.length || 0);
+      } else {
+        // Paginated path
+        const data = await podApi.list(selectedCluster, selectedNamespace, {
+          search: searchTerm || undefined,
+          page,
+          page_size: PAGE_SIZE,
+        }) as PaginatedResponse<Pod>;
+        setPods(data?.items || []);
+        setTotal(data?.total || 0);
+      }
     } catch (err) {
       setPods([]);
+      setTotal(0);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch Pods',
@@ -90,11 +112,17 @@ export function PodsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCluster, selectedNamespace, deploymentFilter, toast]);
+  }, [selectedCluster, selectedNamespace, deploymentFilter, searchTerm, page, toast]);
 
   useEffect(() => {
     fetchPods();
   }, [fetchPods]);
+
+  // Reset page on cluster/namespace/deployment change
+  useEffect(() => {
+    setPage(1);
+    setSearchTerm('');
+  }, [selectedCluster, selectedNamespace, deploymentFilter]);
 
   const fetchDeployments = useCallback(async () => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -123,6 +151,16 @@ export function PodsPage() {
     setSearchParams(searchParams);
   };
 
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
+      setPage(1);
+    }, 300);
+  };
+
   const handleDelete = async () => {
     if (!selectedPod) return;
     try {
@@ -142,9 +180,7 @@ export function PodsPage() {
     }
   };
 
-  const filteredPods = pods.filter((pod) =>
-    pod.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const fetchLogs = useCallback(async (podName: string, container?: string, previous?: boolean) => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -259,7 +295,7 @@ export function PodsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {pods.length} pods
+            {total} pods
           </Badge>
         </div>
       </div>
@@ -295,7 +331,7 @@ export function PodsPage() {
           <Input
             placeholder="Search Pods..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -325,7 +361,7 @@ export function PodsPage() {
       {/* Pod List */}
       {loading ? (
         <Loading text="Loading Pods..." />
-      ) : filteredPods.length === 0 ? (
+      ) : pods.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Container className="w-12 h-12 text-muted-foreground/50 mb-4" />
@@ -336,7 +372,7 @@ export function PodsPage() {
         </Card>
       ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredPods.map((pod) => (
+          {pods.map((pod) => (
             <Card
               key={pod.name}
               className="group hover:border-primary/50 transition-colors cursor-pointer"
@@ -471,7 +507,7 @@ export function PodsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredPods.map((pod) => (
+                {pods.map((pod) => (
                   <tr
                     key={pod.name}
                     className="border-b border-border hover:bg-muted/50 transition-colors cursor-pointer"
@@ -559,6 +595,36 @@ export function PodsPage() {
             </table>
           </div>
         </Card>
+      )}
+
+      {/* Pagination */}
+      {!deploymentFilter && totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Showing {(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, total)} of {total} pods
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* View Dialog */}

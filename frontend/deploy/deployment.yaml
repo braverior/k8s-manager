@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-manager-web
+  namespace: k8s-manager
+  labels:
+    app: k8s-manager-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-manager-web
+  template:
+    metadata:
+      labels:
+        app: k8s-manager-web
+    spec:
+      containers:
+        - name: k8s-manager-web
+          image: ccr-2107uxdo-pub.cnc.bj.baidubce.com/domob-hub/k8s-manager-web:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: K8S_MANAGER_CLUSTERS
+              valueFrom:
+                configMapKeyRef:
+                  name: k8s-manager-web-config
+                  key: clusters
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

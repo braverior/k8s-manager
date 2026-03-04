@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -22,11 +23,11 @@ func NewPodService(clientManager *k8s.ClientManager) *PodService {
 	}
 }
 
-// List 列出命名空间下的所有 Pod
-func (s *PodService) List(ctx context.Context, clusterName, namespace string) ([]dto.PodResponse, error) {
+// List 列出命名空间下的所有 Pod（支持分页和搜索）
+func (s *PodService) List(ctx context.Context, clusterName, namespace string, query *dto.ResourceQuery) ([]dto.PodResponse, int64, error) {
 	client, err := s.clientManager.GetClient(clusterName)
 	if err != nil {
-		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
+		return nil, 0, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
 	}
 
 	metricsClient, _ := s.clientManager.GetMetricsClient(clusterName)
@@ -34,7 +35,7 @@ func (s *PodService) List(ctx context.Context, clusterName, namespace string) ([
 
 	pods, err := op.List(ctx, namespace)
 	if err != nil {
-		return nil, apperrors.Wrap(err, 500, 500, "获取 Pod 列表失败")
+		return nil, 0, apperrors.Wrap(err, 500, 500, "获取 Pod 列表失败")
 	}
 
 	// 获取所有 Pod 的指标
@@ -47,7 +48,36 @@ func (s *PodService) List(ctx context.Context, clusterName, namespace string) ([
 		}
 	}
 
-	return s.toResponses(pods, metricsMap), nil
+	responses := s.toResponses(pods, metricsMap)
+
+	// 搜索过滤
+	if query != nil && query.Search != "" {
+		search := strings.ToLower(query.Search)
+		filtered := make([]dto.PodResponse, 0)
+		for _, r := range responses {
+			if strings.Contains(strings.ToLower(r.Name), search) {
+				filtered = append(filtered, r)
+			}
+		}
+		responses = filtered
+	}
+
+	total := int64(len(responses))
+
+	// 分页
+	if query != nil && query.Page > 0 && query.PageSize > 0 {
+		offset := (query.Page - 1) * query.PageSize
+		if offset >= len(responses) {
+			return []dto.PodResponse{}, total, nil
+		}
+		end := offset + query.PageSize
+		if end > len(responses) {
+			end = len(responses)
+		}
+		responses = responses[offset:end]
+	}
+
+	return responses, total, nil
 }
 
 // ListByDeployment 根据 Deployment 名称查询关联的 Pod

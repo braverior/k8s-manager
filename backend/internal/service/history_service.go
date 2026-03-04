@@ -108,6 +108,41 @@ func (s *HistoryService) Diff(ctx context.Context, clusterName, namespace string
 	}, nil
 }
 
+func (s *HistoryService) DiffWithPrevious(ctx context.Context, id uint64) (*dto.DiffResponse, error) {
+	current, err := s.historyRepo.GetByID(ctx, id)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, apperrors.ErrHistoryNotFound
+		}
+		return nil, apperrors.Wrap(err, 500, 500, "获取历史记录失败")
+	}
+
+	previous, err := s.historyRepo.GetPreviousVersion(ctx, current.ClusterName, current.Namespace, current.ResourceType, current.ResourceName, current.Version)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// 第一个版本，与空内容对比
+			diff := s.generateDiff("", current.Content)
+			return &dto.DiffResponse{
+				SourceVersion: 0,
+				TargetVersion: current.ID,
+				SourceContent: "",
+				TargetContent: current.Content,
+				Diff:          diff,
+			}, nil
+		}
+		return nil, apperrors.Wrap(err, 500, 500, "查找上一版本失败")
+	}
+
+	diff := s.generateDiff(previous.Content, current.Content)
+	return &dto.DiffResponse{
+		SourceVersion: previous.ID,
+		TargetVersion: current.ID,
+		SourceContent: previous.Content,
+		TargetContent: current.Content,
+		Diff:          diff,
+	}, nil
+}
+
 func (s *HistoryService) Rollback(ctx context.Context, historyID uint64, req *dto.RollbackRequest) (*dto.RollbackResponse, error) {
 	history, err := s.historyRepo.GetByID(ctx, historyID)
 	if err != nil {

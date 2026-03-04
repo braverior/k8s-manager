@@ -8,6 +8,13 @@ type ResourceRequest struct {
 	Content string `json:"content"`
 }
 
+// ResourceQuery 分页和搜索查询参数
+type ResourceQuery struct {
+	Search   string `form:"search"`
+	Page     int    `form:"page,default=1"`
+	PageSize int    `form:"page_size,default=50"`
+}
+
 // ResourceYAMLResponse 通用资源 YAML 响应
 type ResourceYAMLResponse struct {
 	// 资源名称

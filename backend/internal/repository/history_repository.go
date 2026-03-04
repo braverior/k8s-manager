@@ -69,6 +69,19 @@ func (r *HistoryRepository) GetLatestVersionByClusterName(ctx context.Context, c
 	return history.Version, nil
 }
 
+func (r *HistoryRepository) GetPreviousVersion(ctx context.Context, clusterName, namespace, resourceType, resourceName string, currentVersion uint) (*entity.ResourceHistory, error) {
+	var history entity.ResourceHistory
+	err := r.db.WithContext(ctx).
+		Where("cluster_name = ? AND namespace = ? AND resource_type = ? AND resource_name = ? AND version < ?",
+			clusterName, namespace, resourceType, resourceName, currentVersion).
+		Order("version DESC").
+		First(&history).Error
+	if err != nil {
+		return nil, err
+	}
+	return &history, nil
+}
+
 func (r *HistoryRepository) ListByResource(ctx context.Context, clusterName, namespace, resourceType, resourceName string) ([]entity.ResourceHistory, error) {
 	var histories []entity.ResourceHistory
 	err := r.db.WithContext(ctx).

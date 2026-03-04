@@ -186,8 +186,17 @@ export const clusterApi = {
 
 // Node APIs
 export const nodeApi = {
-  list: (cluster: string) =>
-    clusterFetch<NodeListItem[]>(cluster, `/clusters/${cluster}/nodes`),
+  list: (cluster: string, params?: { search?: string; page?: number; page_size?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
+    const query = searchParams.toString();
+    return clusterFetch<PaginatedResponse<NodeListItem>>(
+      cluster,
+      `/clusters/${cluster}/nodes${query ? `?${query}` : ''}`
+    );
+  },
 
   get: (cluster: string, name: string) =>
     clusterFetch<NodeDetail>(cluster, `/clusters/${cluster}/nodes/${name}`),
@@ -250,11 +259,22 @@ export const deploymentApi = {
 
 // Pod APIs
 export const podApi = {
-  list: (cluster: string, namespace: string, params?: { deployment?: string }) => {
+  list: (cluster: string, namespace: string, params?: { deployment?: string; search?: string; page?: number; page_size?: number }) => {
     const searchParams = new URLSearchParams();
     if (params?.deployment) searchParams.set('deployment', params.deployment);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
     const query = searchParams.toString();
-    return clusterFetch<Pod[]>(
+    // When deployment filter is present, backend returns non-paginated array via response.Success
+    // When no deployment filter, backend returns paginated response via response.SuccessWithPage
+    if (params?.deployment) {
+      return clusterFetch<Pod[]>(
+        cluster,
+        `/clusters/${cluster}/namespaces/${namespace}/pods${query ? `?${query}` : ''}`
+      );
+    }
+    return clusterFetch<PaginatedResponse<Pod>>(
       cluster,
       `/clusters/${cluster}/namespaces/${namespace}/pods${query ? `?${query}` : ''}`
     );
@@ -327,6 +347,12 @@ export const historyApi = {
         method: 'POST',
         body: JSON.stringify({ operator }),
       }
+    ),
+
+  diffWithPrevious: (cluster: string, namespace: string, id: number) =>
+    clusterFetch<HistoryDiff>(
+      cluster,
+      `/clusters/${cluster}/namespaces/${namespace}/histories/${id}/diff-previous`
     ),
 };
 

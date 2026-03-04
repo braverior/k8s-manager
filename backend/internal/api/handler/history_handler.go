@@ -76,6 +76,21 @@ func (h *HistoryHandler) Diff(c *gin.Context) {
 	response.Success(c, diff)
 }
 
+func (h *HistoryHandler) DiffWithPrevious(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的历史记录 ID")
+		return
+	}
+
+	diff, err := h.svc.DiffWithPrevious(c.Request.Context(), id)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	response.Success(c, diff)
+}
+
 func (h *HistoryHandler) Rollback(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {

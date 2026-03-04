@@ -20,25 +20,41 @@ func NewPodHandler(svc *service.PodService) *PodHandler {
 
 // List 列出命名空间下的所有 Pod
 // 支持 ?deployment=xxx 参数按 Deployment 筛选
+// 支持 ?search=xxx&page=1&page_size=50 分页和搜索
 func (h *PodHandler) List(c *gin.Context) {
 	clusterName := c.Param("cluster")
 	namespace := c.Param("namespace")
 	deploymentName := c.Query("deployment")
 
-	var pods []dto.PodResponse
-	var err error
-
 	if deploymentName != "" {
-		pods, err = h.svc.ListByDeployment(c.Request.Context(), clusterName, namespace, deploymentName)
-	} else {
-		pods, err = h.svc.List(c.Request.Context(), clusterName, namespace)
+		// 按 Deployment 筛选：不分页
+		pods, err := h.svc.ListByDeployment(c.Request.Context(), clusterName, namespace, deploymentName)
+		if err != nil {
+			handleError(c, err)
+			return
+		}
+		response.Success(c, pods)
+		return
 	}
 
+	// 分页列表
+	var query dto.ResourceQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		query = dto.ResourceQuery{Page: 1, PageSize: 50}
+	}
+	if query.Page <= 0 {
+		query.Page = 1
+	}
+	if query.PageSize <= 0 {
+		query.PageSize = 50
+	}
+
+	pods, total, err := h.svc.List(c.Request.Context(), clusterName, namespace, &query)
 	if err != nil {
 		handleError(c, err)
 		return
 	}
-	response.Success(c, pods)
+	response.SuccessWithPage(c, total, pods)
 }
 
 // ListByDeployment 根据 Deployment 名称查询关联的 Pod

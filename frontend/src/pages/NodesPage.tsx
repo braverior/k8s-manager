@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { nodeApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
 import { useToast } from '@/hooks/use-toast';
@@ -33,9 +33,13 @@ import {
   Shield,
   LayoutGrid,
   List,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 type ViewMode = 'card' | 'table';
+
+const PAGE_SIZE = 50;
 
 export function NodesPage() {
   const { selectedCluster } = useCluster();
@@ -45,6 +49,11 @@ export function NodesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  // Debounce timer ref
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Dialog states
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -55,10 +64,16 @@ export function NodesPage() {
     if (!selectedCluster) return;
     try {
       setLoading(true);
-      const data = await nodeApi.list(selectedCluster);
-      setNodes(data || []);
+      const data = await nodeApi.list(selectedCluster, {
+        search: searchTerm || undefined,
+        page,
+        page_size: PAGE_SIZE,
+      });
+      setNodes(data?.items || []);
+      setTotal(data?.total || 0);
     } catch (err) {
       setNodes([]);
+      setTotal(0);
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to fetch nodes',
@@ -67,11 +82,27 @@ export function NodesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCluster, toast]);
+  }, [selectedCluster, searchTerm, page, toast]);
 
   useEffect(() => {
     fetchNodes();
   }, [fetchNodes]);
+
+  // Reset page on cluster change
+  useEffect(() => {
+    setPage(1);
+    setSearchTerm('');
+  }, [selectedCluster]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
+      setPage(1);
+    }, 300);
+  };
 
   const fetchNodeDetail = async (nodeName: string) => {
     if (!selectedCluster) return;
@@ -91,9 +122,7 @@ export function NodesPage() {
     }
   };
 
-  const filteredNodes = nodes.filter((node) =>
-    node.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const formatAge = (dateStr: string) => {
     const created = new Date(dateStr);
@@ -135,7 +164,7 @@ export function NodesPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {nodes.length} nodes
+            {total} nodes
           </Badge>
         </div>
       </div>
@@ -147,7 +176,7 @@ export function NodesPage() {
           <Input
             placeholder="Search nodes..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -177,7 +206,7 @@ export function NodesPage() {
       {/* Node List */}
       {loading ? (
         <Loading text="Loading nodes..." />
-      ) : filteredNodes.length === 0 ? (
+      ) : nodes.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Server className="w-12 h-12 text-muted-foreground/50 mb-4" />
@@ -188,7 +217,7 @@ export function NodesPage() {
         </Card>
       ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredNodes.map((node) => (
+          {nodes.map((node) => (
             <Card
               key={node.name}
               className="group hover:border-primary/50 transition-colors cursor-pointer"
@@ -309,7 +338,7 @@ export function NodesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredNodes.map((node) => (
+                {nodes.map((node) => (
                   <tr
                     key={node.name}
                     className="border-b border-border hover:bg-muted/50 transition-colors cursor-pointer"
@@ -391,6 +420,36 @@ export function NodesPage() {
             </table>
           </div>
         </Card>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Showing {(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, total)} of {total} nodes
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Node Detail Dialog */}

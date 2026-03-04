@@ -23,12 +23,9 @@ Change History：
 - **资源管理** - Deployment、Pod、ConfigMap、Service、HPA 的 CRUD 操作
 - **实时监控** - Dashboard 展示集群资源使用情况和节点状态
 - **在线编辑** - 内置 Monaco Editor，支持 YAML 在线编辑
-- **Web 终端** - 基于 WebSocket + xterm.js 的 Pod 在线终端（exec）
-- **日志查看** - 实时查看 Pod 容器日志，支持历史日志和时间戳
-- **变更历史** - 记录资源变更历史，支持版本对比和回滚
+- **变更历史** - 记录资源变更历史，支持审计追溯
 - **用户认证** - 支持飞书 OAuth 登录 + JWT Token 认证
-- **权限控制** - 基于角色的访问控制（RBAC），支持集群和命名空间级别权限
-- **用户管理** - 管理员可管理用户角色、状态和权限，支持批量设置
+- **权限控制** - 基于角色的访问控制（RBAC）
 
 ## 技术栈
 
@@ -50,8 +47,7 @@ Change History：
 | Vite | 5.0 | 构建工具 |
 | Tailwind CSS | 3.4 | 样式框架 |
 | shadcn/ui | - | 组件库 |
-| Monaco Editor | 0.52 | YAML 在线编辑器 |
-| xterm.js | 6.0 | Pod 终端模拟器 |
+| Monaco Editor | 4.6 | 代码编辑器 |
 
 ## 项目结构
 
@@ -62,21 +58,14 @@ k8s-manager/
 │   ├── configs/config.yaml          # 配置模板
 │   ├── internal/
 │   │   ├── api/
-│   │   │   ├── handler/             # HTTP 处理器（12 个 Handler）
-│   │   │   ├── middleware/          # 中间件（认证、CORS、日志、恢复）
-│   │   │   ├── response/           # 统一响应格式
+│   │   │   ├── handler/             # HTTP 处理器
 │   │   │   └── router/              # 路由定义
-│   │   ├── service/                 # 业务逻辑层（12 个 Service）
+│   │   ├── service/                 # 业务逻辑层
 │   │   ├── repository/              # 数据访问层
 │   │   ├── k8s/                     # K8s 客户端管理
-│   │   ├── model/
-│   │   │   ├── entity/              # 数据库实体
-│   │   │   └── dto/                 # 数据传输对象
+│   │   ├── model/                   # 数据模型
 │   │   ├── config/                  # 配置加载
-│   │   └── pkg/
-│   │       ├── logger/              # 日志工具
-│   │       ├── errors/              # 错误处理
-│   │       └── utils/               # 通用工具
+│   │   └── pkg/logger/              # 日志工具
 │   ├── migrations/                  # 数据库迁移
 │   ├── deploy/                      # K8s 部署配置
 │   ├── Dockerfile                   # 后端镜像构建
@@ -88,7 +77,7 @@ k8s-manager/
 │   │   ├── App.tsx                  # 根组件
 │   │   ├── api/                     # API 客户端
 │   │   ├── components/              # 公共组件
-│   │   ├── pages/                   # 页面组件（9 个页面）
+│   │   ├── pages/                   # 页面组件
 │   │   ├── hooks/                   # 自定义 Hooks
 │   │   ├── lib/                     # 工具函数
 │   │   └── types/                   # TypeScript 类型
@@ -97,7 +86,6 @@ k8s-manager/
 │   └── vite.config.ts               # Vite 配置
 │
 └── docs/                             # 文档
-    └── API_DESIGN.md                # API 接口文档
 ```
 
 ## 架构图
@@ -475,11 +463,8 @@ export JWT_SECRET=your-super-secret-key
 | namespaces | get, list | 列出命名空间 |
 | nodes | get, list | 查看节点信息 |
 | pods | get, list, delete | Pod 管理 |
-| pods/log | get | 查看 Pod 日志 |
-| pods/exec | create | Pod 终端访问 |
 | pods (metrics) | get, list | Pod 监控指标 |
 | nodes (metrics) | get, list | 节点监控指标 |
-| events | get, list | 查看事件 |
 | configmaps | get, list, create, update, patch, delete | ConfigMap 完整管理 |
 | services | get, list, create, update, patch, delete | Service 完整管理 |
 | deployments | get, list, create, update, patch, delete | Deployment 完整管理 |
@@ -496,79 +481,19 @@ curl http://localhost:8080/health
 
 ## API 端点
 
-> 完整的 API 文档参见 [docs/API_DESIGN.md](docs/API_DESIGN.md)
-
-所有接口基础路径：`/api/v1`
-
-### 认证相关
-
-| 方法 | 路径 | 说明 | 认证 |
-|------|------|------|------|
-| GET | `/health` | 健康检查 | 否 |
-| GET | `/api/v1/auth/feishu/config` | 获取飞书 OAuth 配置 | 否 |
-| POST | `/api/v1/auth/feishu/login` | 飞书登录 | 否 |
-| GET | `/api/v1/auth/me` | 获取当前用户信息 | 是 |
-| POST | `/api/v1/auth/logout` | 退出登录 | 是 |
-
-### 集群与节点
-
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/clusters` | 获取集群列表 |
-| GET | `/clusters/:cluster` | 获取集群详情 |
-| POST | `/clusters/:cluster/test-connection` | 测试集群连接 |
-| GET | `/clusters/:cluster/namespaces` | 获取命名空间列表 |
-| GET | `/clusters/:cluster/dashboard` | 获取集群 Dashboard 概览 |
-| GET | `/clusters/:cluster/nodes` | 获取节点列表 |
-| GET | `/clusters/:cluster/nodes/:name` | 获取节点详情 |
-
-### 资源管理（Deployment / ConfigMap / Service / HPA）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/clusters/:cluster/namespaces/:namespace/<resource>` | 获取资源列表 |
-| POST | `/clusters/:cluster/namespaces/:namespace/<resource>` | 创建资源（Apply） |
-| GET | `/clusters/:cluster/namespaces/:namespace/<resource>/:name` | 获取资源详情 |
-| PUT | `/clusters/:cluster/namespaces/:namespace/<resource>/:name` | 更新资源（Apply） |
-| DELETE | `/clusters/:cluster/namespaces/:namespace/<resource>/:name` | 删除资源 |
-
-> `<resource>` 可以是 `deployments`、`configmaps`、`services`、`hpas`
-
-### Pod 管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/clusters/:cluster/namespaces/:namespace/pods` | 获取 Pod 列表（支持 `?deployment=` 筛选） |
-| GET | `/clusters/:cluster/namespaces/:namespace/pods/:name` | 获取 Pod 详情 |
-| DELETE | `/clusters/:cluster/namespaces/:namespace/pods/:name` | 删除 Pod（重启） |
-| GET | `/clusters/:cluster/namespaces/:namespace/pods/:name/logs` | 获取 Pod 日志 |
-| GET | `/clusters/:cluster/namespaces/:namespace/pods/:name/events` | 获取 Pod 事件 |
-| GET | `/clusters/:cluster/namespaces/:namespace/pods/:name/containers` | 获取容器列表 |
-| GET | `/clusters/:cluster/namespaces/:namespace/pods/:name/exec` | WebSocket 终端（通过 URL 参数认证） |
-
-### 变更历史
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/clusters/:cluster/namespaces/:namespace/histories` | 获取历史记录列表 |
-| GET | `/clusters/:cluster/namespaces/:namespace/histories/:id` | 获取历史记录详情 |
-| GET | `/clusters/:cluster/namespaces/:namespace/histories/diff` | 版本对比（Diff） |
-| POST | `/clusters/:cluster/namespaces/:namespace/histories/:id/rollback` | 回滚到指定版本 |
-
-### 管理员接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/admin/users` | 获取用户列表 |
-| GET | `/admin/users/:user_id` | 获取用户详情 |
-| PUT | `/admin/users/:user_id/role` | 更新用户角色 |
-| PUT | `/admin/users/:user_id/status` | 启用/禁用用户 |
-| GET | `/admin/users/:user_id/permissions` | 获取用户权限 |
-| PUT | `/admin/users/:user_id/permissions` | 设置用户权限 |
-| POST | `/admin/users/:user_id/permissions/clusters` | 添加集群权限 |
-| DELETE | `/admin/users/:user_id/permissions/clusters/:cluster` | 移除集群权限 |
-| PUT | `/admin/users/:user_id/permissions/clusters/:cluster/namespaces` | 更新命名空间权限 |
-| POST | `/admin/permissions/batch` | 批量设置权限 |
+| GET | `/health` | 健康检查 |
+| POST | `/api/v1/auth/feishu/login` | 飞书登录 |
+| GET | `/api/v1/clusters` | 获取集群列表 |
+| GET | `/api/v1/clusters/:cluster/namespaces` | 获取命名空间列表 |
+| GET | `/api/v1/clusters/:cluster/deployments` | 获取 Deployment 列表 |
+| GET | `/api/v1/clusters/:cluster/pods` | 获取 Pod 列表 |
+| GET | `/api/v1/clusters/:cluster/configmaps` | 获取 ConfigMap 列表 |
+| GET | `/api/v1/clusters/:cluster/services` | 获取 Service 列表 |
+| GET | `/api/v1/clusters/:cluster/hpa` | 获取 HPA 列表 |
+| GET | `/api/v1/clusters/:cluster/dashboard` | 获取 Dashboard 数据 |
+| GET | `/api/v1/clusters/:cluster/namespaces/:namespace/histories/:id/diff-previous` | 与上一版本 Diff 对比 |
 
 ## 常见问题
 

@@ -109,7 +109,7 @@ func (h *TerminalHandler) Exec(c *gin.Context) {
 
 	// 默认命令
 	if command == "" {
-		command = "/bin/bash"
+		command = "/bin/sh"
 	}
 
 	// 升级为 WebSocket

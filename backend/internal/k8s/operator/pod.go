@@ -27,7 +27,7 @@ func NewPodOperator(client *kubernetes.Clientset, metricsClient metricsv.Interfa
 
 // List 列出命名空间下的所有 Pod
 func (o *PodOperator) List(ctx context.Context, namespace string) ([]corev1.Pod, error) {
-	list, err := o.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	list, err := o.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (o *PodOperator) ListMetrics(ctx context.Context, namespace string) ([]PodM
 		return nil, fmt.Errorf("metrics client not available")
 	}
 
-	list, err := o.metricsClient.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{})
+	list, err := o.metricsClient.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		return nil, err
 	}

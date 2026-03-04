@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"golang.org/x/sync/errgroup"
 
 	"k8s_api_server/internal/k8s"
 	k8soperator "k8s_api_server/internal/k8s/operator"
@@ -23,6 +25,11 @@ func NewDashboardService(clientManager *k8s.ClientManager) *DashboardService {
 	return &DashboardService{
 		clientManager: clientManager,
 	}
+}
+
+// cachedListOptions returns ListOptions with ResourceVersion="0" to read from API server cache
+func cachedListOptions() metav1.ListOptions {
+	return metav1.ListOptions{ResourceVersion: "0"}
 }
 
 // GetOverview 获取集群概览信息
@@ -42,57 +49,104 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		Status:      clusterInfo.Status,
 	}
 
+	var mu sync.Mutex
+	var nodes *corev1.NodeList
+	var hpas []autoscalingv2.HorizontalPodAutoscaler
+
+	g, gCtx := errgroup.WithContext(ctx)
+
 	// 获取 Kubernetes 版本
-	if version, err := client.Discovery().ServerVersion(); err == nil {
-		resp.Version = version.GitVersion
-	}
+	g.Go(func() error {
+		if version, err := client.Discovery().ServerVersion(); err == nil {
+			mu.Lock()
+			resp.Version = version.GitVersion
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取节点列表
-	nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.Nodes = len(nodes.Items)
-	}
+	g.Go(func() error {
+		if nodeList, err := client.CoreV1().Nodes().List(gCtx, cachedListOptions()); err == nil {
+			mu.Lock()
+			nodes = nodeList
+			resp.Resources.Nodes = len(nodeList.Items)
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取命名空间数量
-	namespaces, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.Namespaces = len(namespaces.Items)
-	}
+	g.Go(func() error {
+		if namespaces, err := client.CoreV1().Namespaces().List(gCtx, cachedListOptions()); err == nil {
+			mu.Lock()
+			resp.Resources.Namespaces = len(namespaces.Items)
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取所有命名空间的 Pod
-	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.Pods = s.countPodsByPhase(pods.Items)
-	}
+	g.Go(func() error {
+		if pods, err := client.CoreV1().Pods("").List(gCtx, cachedListOptions()); err == nil {
+			stats := s.countPodsByPhase(pods.Items)
+			mu.Lock()
+			resp.Resources.Pods = stats
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取所有命名空间的 Deployment
-	deployments, err := client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.Deployments = len(deployments.Items)
-	}
+	g.Go(func() error {
+		if deployments, err := client.AppsV1().Deployments("").List(gCtx, cachedListOptions()); err == nil {
+			mu.Lock()
+			resp.Resources.Deployments = len(deployments.Items)
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取所有命名空间的 Service
-	services, err := client.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.Services = len(services.Items)
-	}
+	g.Go(func() error {
+		if services, err := client.CoreV1().Services("").List(gCtx, cachedListOptions()); err == nil {
+			mu.Lock()
+			resp.Resources.Services = len(services.Items)
+			mu.Unlock()
+		}
+		return nil
+	})
 
 	// 获取所有命名空间的 ConfigMap
-	configMaps, err := client.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
-	if err == nil {
-		resp.Resources.ConfigMaps = len(configMaps.Items)
-	}
+	g.Go(func() error {
+		if configMaps, err := client.CoreV1().ConfigMaps("").List(gCtx, cachedListOptions()); err == nil {
+			mu.Lock()
+			resp.Resources.ConfigMaps = len(configMaps.Items)
+			mu.Unlock()
+		}
+		return nil
+	})
 
-	// 获取所有命名空间的 HPA（使用版本自适应的 operator）
-	hpaOp := k8soperator.NewHPAOperator(client)
-	hpas, err := hpaOp.List(ctx, "")
-	if err == nil {
-		resp.Resources.HPAs = len(hpas)
-		// 添加 HPA 概要信息
+	// 获取所有命名空间的 HPA
+	g.Go(func() error {
+		hpaOp := k8soperator.NewHPAOperator(client)
+		if hpaList, err := hpaOp.List(gCtx, ""); err == nil {
+			mu.Lock()
+			hpas = hpaList
+			resp.Resources.HPAs = len(hpaList)
+			mu.Unlock()
+		}
+		return nil
+	})
+
+	// Wait for all Phase 1 goroutines
+	_ = g.Wait()
+
+	// Phase 2: sequential processing that depends on Phase 1 results
+	if hpas != nil {
 		resp.HPASummaries = s.buildHPASummaries(hpas)
 	}
 
-	// 获取集群资源容量和使用情况
 	if nodes != nil {
 		resp.Capacity, resp.Usage = s.calculateClusterResources(ctx, clusterName, nodes.Items)
 	}
@@ -147,8 +201,8 @@ func (s *DashboardService) calculateClusterResources(ctx context.Context, cluste
 		return capacity, nil
 	}
 
-	// 获取节点指标
-	nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
+	// 获取节点指标（使用缓存）
+	nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, cachedListOptions())
 	if err != nil {
 		return capacity, nil
 	}

@@ -21,8 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import Editor from '@monaco-editor/react';
-import type { HistoryRecord } from '@/types';
+import Editor, { DiffEditor } from '@monaco-editor/react';
+import type { HistoryRecord, HistoryDiff } from '@/types';
 import {
   Search,
   History,
@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Eye,
   Copy,
+  GitCompareArrows,
 } from 'lucide-react';
 
 const RESOURCE_TYPES = ['All', 'ConfigMap', 'Deployment', 'Service', 'HPA'];
@@ -54,6 +55,12 @@ export function HistoryPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Diff dialog
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
+  const [diffData, setDiffData] = useState<HistoryDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffRecord, setDiffRecord] = useState<HistoryRecord | null>(null);
 
   const fetchHistory = useCallback(async () => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -116,6 +123,25 @@ export function HistoryPage() {
         description: 'Failed to copy to clipboard',
         variant: 'destructive',
       });
+    }
+  };
+
+  const fetchDiffWithPrevious = async (record: HistoryRecord) => {
+    try {
+      setDiffLoading(true);
+      setDiffRecord(record);
+      setDiffDialogOpen(true);
+      const data = await historyApi.diffWithPrevious(selectedCluster, selectedNamespace, record.id);
+      setDiffData(data);
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to fetch diff',
+        variant: 'destructive',
+      });
+      setDiffDialogOpen(false);
+    } finally {
+      setDiffLoading(false);
     }
   };
 
@@ -246,6 +272,16 @@ export function HistoryPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">#{record.id}</Badge>
+                    {record.operation !== 'delete' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => fetchDiffWithPrevious(record)}
+                      >
+                        <GitCompareArrows className="w-4 h-4 mr-1" />
+                        Diff
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -371,6 +407,60 @@ export function HistoryPage() {
                 Copy YAML
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diff Dialog */}
+      <Dialog open={diffDialogOpen} onOpenChange={setDiffDialogOpen}>
+        <DialogContent className="max-w-6xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitCompareArrows className="w-5 h-5" />
+              {diffRecord && getResourceTypeBadge(diffRecord.resource_type)}
+              {diffRecord?.resource_name}
+              <span className="text-muted-foreground font-normal text-sm">
+                {diffData?.source_version === 0
+                  ? '(First version - no previous version)'
+                  : `Version diff`}
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              {diffData?.source_version === 0
+                ? `Current: Version ${diffRecord?.version}`
+                : `Previous version → Current version (v${diffRecord?.version})`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 border rounded-md overflow-hidden">
+            {diffLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Spinner size="lg" />
+              </div>
+            ) : (
+              <DiffEditor
+                height="100%"
+                language="yaml"
+                original={diffData?.source_content || ''}
+                modified={diffData?.target_content || ''}
+                theme="vs-dark"
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  fontFamily: 'Fira Code, monospace',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  renderSideBySide: true,
+                }}
+              />
+            )}
+          </div>
+
+          <div className="flex items-center justify-end pt-2">
+            <Button variant="outline" onClick={() => setDiffDialogOpen(false)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

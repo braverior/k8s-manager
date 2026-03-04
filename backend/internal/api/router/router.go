@@ -205,6 +205,7 @@ func (r *Router) Setup(mode string) *gin.Engine {
 					histories.GET("", r.historyHandler.List)
 					histories.GET("/diff", r.historyHandler.Diff)
 					histories.GET("/:id", r.historyHandler.Get)
+					histories.GET("/:id/diff-previous", r.historyHandler.DiffWithPrevious)
 					histories.POST("/:id/rollback", r.historyHandler.Rollback)
 				}
 			}

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-manager-web-config
+  namespace: k8s-manager
+data:
+  # 集群配置 - JSON 格式
+  # 修改此处配置来添加/删除集群，重启 Pod 后生效
+  clusters: |
+    [{"name":"local","description":"当前集群","api_server":"http://k8s-manager.k8s-manager.svc.cluster.local","status":"connected"}]

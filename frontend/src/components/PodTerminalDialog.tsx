@@ -340,73 +340,14 @@ export function PodTerminalDialog({
             : 'max-w-4xl h-[80vh]'
         }`}
       >
-        <DialogHeader className="px-5 py-3 border-b shrink-0">
-          <DialogTitle className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <TerminalIcon className="w-5 h-5 text-primary shrink-0" />
-              <span className="truncate">{pod?.name}</span>
-              <span className="text-muted-foreground shrink-0">/</span>
-              <Select
-                value={selectedContainer}
-                onValueChange={setSelectedContainer}
-                disabled={connectionStatus === 'connected'}
-              >
-                <SelectTrigger className="h-8 w-auto min-w-[120px] max-w-[250px]">
-                  <SelectValue placeholder="Container" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pod?.containers?.map((container: PodContainer) => (
-                    <SelectItem key={container.name} value={container.name}>
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                          container.state?.toLowerCase() === 'running' ? 'bg-green-500' : 'bg-gray-400'
-                        }`} />
-                        <span>{container.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <DialogHeader className="px-6 py-4 border-b shrink-0">
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TerminalIcon className="w-5 h-5 text-primary" />
+              <span>Terminal - {pod?.name}</span>
               {getStatusBadge()}
-              {errorMessage && (
-                <span className="text-xs text-destructive truncate">{errorMessage}</span>
-              )}
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {connectionStatus === 'disconnected' || connectionStatus === 'error' ? (
-                <Button
-                  size="sm"
-                  onClick={connect}
-                  disabled={!selectedContainer || !hasContainers}
-                >
-                  <TerminalIcon className="w-4 h-4 mr-1" />
-                  Connect
-                </Button>
-              ) : connectionStatus === 'connecting' ? (
-                <Button size="sm" variant="ghost" disabled>
-                  <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                  Connecting...
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      disconnect();
-                      setTimeout(connect, 100);
-                    }}
-                    title="Reconnect"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={disconnect}>
-                    <X className="w-4 h-4 mr-1" />
-                    Disconnect
-                  </Button>
-                </>
-              )}
-              <div className="w-px h-5 bg-border mx-1" />
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
@@ -430,6 +371,78 @@ export function PodTerminalDialog({
             </div>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Control Bar */}
+        <div className="flex items-center gap-4 px-6 py-3 bg-muted/50 border-b">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Container:</span>
+            <Select
+              value={selectedContainer}
+              onValueChange={setSelectedContainer}
+              disabled={connectionStatus === 'connected'}
+            >
+              <SelectTrigger className="w-[350px]">
+                <SelectValue placeholder="Select container" />
+              </SelectTrigger>
+              <SelectContent>
+                {pod?.containers?.map((container: PodContainer) => (
+                  <SelectItem key={container.name} value={container.name}>
+                    <div className="flex items-center justify-between w-full gap-4">
+                      <span>{container.name}</span>
+                      <Badge
+                        variant={container.state?.toLowerCase() === 'running' ? 'success' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {container.state}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {connectionStatus === 'disconnected' || connectionStatus === 'error' ? (
+              <Button
+                size="sm"
+                onClick={connect}
+                disabled={!selectedContainer || !hasContainers}
+              >
+                <TerminalIcon className="w-4 h-4 mr-1" />
+                Connect
+              </Button>
+            ) : connectionStatus === 'connecting' ? (
+              <Button size="sm" disabled>
+                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                Connecting...
+              </Button>
+            ) : (
+              <Button size="sm" variant="destructive" onClick={disconnect}>
+                <X className="w-4 h-4 mr-1" />
+                Disconnect
+              </Button>
+            )}
+
+            {connectionStatus === 'connected' && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  disconnect();
+                  setTimeout(connect, 100);
+                }}
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Reconnect
+              </Button>
+            )}
+          </div>
+
+          {errorMessage && (
+            <span className="text-sm text-destructive ml-auto">{errorMessage}</span>
+          )}
+        </div>
 
         {/* Terminal Container */}
         <div
