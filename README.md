@@ -468,18 +468,15 @@ export JWT_SECRET=your-super-secret-key
 
 ## 数据库初始化
 
-应用使用 MySQL 存储用户信息、权限配置和资源变更历史。需要按顺序执行以下迁移脚本：
+应用使用 MySQL 存储用户信息、权限配置和资源变更历史。**数据表由 GORM AutoMigrate 在应用启动时自动创建，无需手动执行迁移脚本。**
+
+你只需提前创建好数据库即可：
 
 ```bash
-# 创建数据库
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS k8s_manager DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-
-# 执行迁移（按顺序）
-mysql -u root -p k8s_manager < backend/migrations/001_create_resource_histories_table.sql
-mysql -u root -p k8s_manager < backend/migrations/002_create_users_table.sql
-mysql -u root -p k8s_manager < backend/migrations/003_create_user_permissions_table.sql
-mysql -u root -p k8s_manager < backend/migrations/004_init_admin_user.sql
 ```
+
+> `backend/migrations/` 目录下的 SQL 文件仅作为表结构参考文档，不需要手动执行。
 
 ## RBAC 权限说明
 
