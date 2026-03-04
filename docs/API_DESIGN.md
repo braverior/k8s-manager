@@ -272,39 +272,49 @@ GET /clusters/:cluster/dashboard
 GET /clusters/:cluster/nodes
 ```
 
+**查询参数：**
+| 参数 | 类型 | 是否必填 | 默认值 | 描述 |
+|------|------|----------|--------|------|
+| search | string | 否 | - | 按节点名称模糊搜索 |
+| page | int | 否 | 1 | 页码 |
+| page_size | int | 否 | 50 | 每页数量 |
+
 **响应示例：**
 ```json
 {
   "code": 0,
   "message": "success",
-  "data": [
-    {
-      "name": "node-1",
-      "status": "Ready",
-      "roles": ["control-plane", "master"],
-      "internal_ip": "192.168.1.100",
-      "kubelet_version": "v1.28.0",
-      "cpu_capacity": "4",
-      "memory_capacity": "16Gi",
-      "cpu_usage": "800m",
-      "cpu_percentage": 20.0,
-      "memory_usage": "4Gi",
-      "memory_percentage": 25.0,
-      "pod_count": 25,
-      "created_at": "2024-01-01T00:00:00Z"
-    },
-    {
-      "name": "node-2",
-      "status": "Ready",
-      "roles": ["worker"],
-      "internal_ip": "192.168.1.101",
-      "kubelet_version": "v1.28.0",
-      "cpu_capacity": "4",
-      "memory_capacity": "16Gi",
-      "pod_count": 20,
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  ]
+  "data": {
+    "total": 2,
+    "items": [
+      {
+        "name": "node-1",
+        "status": "Ready",
+        "roles": ["control-plane", "master"],
+        "internal_ip": "192.168.1.100",
+        "kubelet_version": "v1.28.0",
+        "cpu_capacity": "4",
+        "memory_capacity": "16Gi",
+        "cpu_usage": "800m",
+        "cpu_percentage": 20.0,
+        "memory_usage": "4Gi",
+        "memory_percentage": 25.0,
+        "pod_count": 25,
+        "created_at": "2024-01-01T00:00:00Z"
+      },
+      {
+        "name": "node-2",
+        "status": "Ready",
+        "roles": ["worker"],
+        "internal_ip": "192.168.1.101",
+        "kubelet_version": "v1.28.0",
+        "cpu_capacity": "4",
+        "memory_capacity": "16Gi",
+        "pod_count": 20,
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -759,16 +769,23 @@ GET /clusters/:cluster/namespaces/:namespace/pods
 ```
 
 **查询参数：**
-| 参数 | 类型 | 是否必填 | 描述 |
-|------|------|----------|------|
-| deployment | string | 否 | 按 Deployment 名称筛选 Pod |
+| 参数 | 类型 | 是否必填 | 默认值 | 描述 |
+|------|------|----------|--------|------|
+| deployment | string | 否 | - | 按 Deployment 名称筛选 Pod（指定时返回数组，不分页） |
+| search | string | 否 | - | 按 Pod 名称模糊搜索 |
+| page | int | 否 | 1 | 页码（仅在未指定 deployment 时生效） |
+| page_size | int | 否 | 50 | 每页数量（仅在未指定 deployment 时生效） |
 
 **示例：**
 ```
+# 按 Deployment 筛选（返回数组）
 GET /clusters/local/namespaces/default/pods?deployment=nginx
+
+# 分页查询（返回分页格式）
+GET /clusters/local/namespaces/default/pods?page=1&page_size=20&search=nginx
 ```
 
-**响应示例：**
+**响应示例（按 Deployment 筛选时返回数组）：**
 ```json
 {
   "code": 0,
@@ -789,6 +806,33 @@ GET /clusters/local/namespaces/default/pods?deployment=nginx
       "metrics": {...}
     }
   ]
+}
+```
+
+**响应示例（不指定 Deployment 时返回分页格式）：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 50,
+    "items": [
+      {
+        "name": "nginx-7c5b4bf8b9-abc12",
+        "namespace": "default",
+        "phase": "Running",
+        "pod_ip": "10.244.1.10",
+        "host_ip": "192.168.1.100",
+        "node_name": "node-1",
+        "ready_containers": 1,
+        "total_containers": 1,
+        "restart_count": 0,
+        "created_at": "2024-01-15T10:30:00Z",
+        "containers": [...],
+        "metrics": {...}
+      }
+    ]
+  }
 }
 ```
 
@@ -1471,6 +1515,37 @@ GET /clusters/:cluster/namespaces/:namespace/histories/diff
     "diff": "--- source\n+++ target\n- 旧内容\n+ 新内容"
   }
 }
+```
+
+### 与上一版本对比（Diff Previous）
+
+```
+GET /clusters/:cluster/namespaces/:namespace/histories/:id/diff-previous
+```
+
+**路径参数：**
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| cluster | string | 集群名称 |
+| namespace | string | 命名空间 |
+| id | uint64 | 历史记录 ID |
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "source_version": 1,
+    "target_version": 2,
+    "source_content": "{...}",
+    "target_content": "{...}",
+    "diff": "--- source\n+++ target\n- 旧内容\n+ 新内容"
+  }
+}
+```
+
+> **说明**：自动查找指定历史记录的上一个版本进行对比。如果没有上一个版本（即为第一条记录），将返回错误。
 ```
 
 ### 回滚到指定版本

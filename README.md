@@ -1,21 +1,27 @@
 # K8s-Manager
 
 一个现代化的 Kubernetes 多集群管理平台，提供直观的 Web 界面来管理和监控 Kubernetes 资源。
-<img width="2998" height="1534" alt="image" src="https://github.com/user-attachments/assets/c068a936-0bed-4518-9645-4fd1b0c27639" />
-Nodes:
-<img width="2956" height="1420" alt="image" src="https://github.com/user-attachments/assets/0dd4183f-9b0c-420f-947e-15b6945ab504" />
-Configmaps:
-<img width="2978" height="1428" alt="image" src="https://github.com/user-attachments/assets/ffed82b1-becf-47d2-b6da-213f8d3f56c7" />
-Deployments:
-<img width="2962" height="1398" alt="image" src="https://github.com/user-attachments/assets/29a3941a-94c2-46b8-881c-cb9567dca9b3" />
-<img width="2932" height="1528" alt="image" src="https://github.com/user-attachments/assets/a9614a7d-1eda-4a42-af60-2cdd87b08c39" />
 
-HPAs：
-<img width="2926" height="1412" alt="image" src="https://github.com/user-attachments/assets/ef38906d-e64c-4c32-9a6d-b5fb1f68d66e" />
-Change History：
-<img width="2962" height="1456" alt="image" src="https://github.com/user-attachments/assets/c47c4211-69b4-4c7a-b337-6b370c439cea" />
+## 界面预览
 
+**Dashboard：**
+<img width="2998" height="1534" alt="Dashboard" src="https://github.com/user-attachments/assets/c068a936-0bed-4518-9645-4fd1b0c27639" />
 
+**Nodes：**
+<img width="2956" height="1420" alt="Nodes" src="https://github.com/user-attachments/assets/0dd4183f-9b0c-420f-947e-15b6945ab504" />
+
+**ConfigMaps：**
+<img width="2978" height="1428" alt="ConfigMaps" src="https://github.com/user-attachments/assets/ffed82b1-becf-47d2-b6da-213f8d3f56c7" />
+
+**Deployments：**
+<img width="2962" height="1398" alt="Deployments" src="https://github.com/user-attachments/assets/29a3941a-94c2-46b8-881c-cb9567dca9b3" />
+<img width="2932" height="1528" alt="Deployment Detail" src="https://github.com/user-attachments/assets/a9614a7d-1eda-4a42-af60-2cdd87b08c39" />
+
+**HPAs：**
+<img width="2926" height="1412" alt="HPAs" src="https://github.com/user-attachments/assets/ef38906d-e64c-4c32-9a6d-b5fb1f68d66e" />
+
+**Change History：**
+<img width="2962" height="1456" alt="Change History" src="https://github.com/user-attachments/assets/c47c4211-69b4-4c7a-b337-6b370c439cea" />
 
 ## 功能特性
 
@@ -23,9 +29,11 @@ Change History：
 - **资源管理** - Deployment、Pod、ConfigMap、Service、HPA 的 CRUD 操作
 - **实时监控** - Dashboard 展示集群资源使用情况和节点状态
 - **在线编辑** - 内置 Monaco Editor，支持 YAML 在线编辑
-- **变更历史** - 记录资源变更历史，支持审计追溯
+- **变更历史** - 记录资源变更历史，支持版本对比（Diff）和一键回滚
+- **Pod 运维** - 支持查看 Pod 日志、事件，WebSocket 终端（exec）直接进入容器
+- **Deployment 关联** - 支持基于 Deployment 筛选关联的 Pod
 - **用户认证** - 支持飞书 OAuth 登录 + JWT Token 认证
-- **权限控制** - 基于角色的访问控制（RBAC）
+- **权限控制** - 基于角色的访问控制（RBAC），支持集群和命名空间级别的精细化权限管理
 
 ## 技术栈
 
@@ -48,6 +56,7 @@ Change History：
 | Tailwind CSS | 3.4 | 样式框架 |
 | shadcn/ui | - | 组件库 |
 | Monaco Editor | 4.6 | 代码编辑器 |
+| xterm.js | 6.0 | Web 终端（Pod exec） |
 
 ## 项目结构
 
@@ -59,6 +68,7 @@ k8s-manager/
 │   ├── internal/
 │   │   ├── api/
 │   │   │   ├── handler/             # HTTP 处理器
+│   │   │   ├── middleware/          # 中间件（认证、CORS、日志等）
 │   │   │   └── router/              # 路由定义
 │   │   ├── service/                 # 业务逻辑层
 │   │   ├── repository/              # 数据访问层
@@ -86,6 +96,8 @@ k8s-manager/
 │   └── vite.config.ts               # Vite 配置
 │
 └── docs/                             # 文档
+    ├── API_DESIGN.md                # API 接口文档
+    └── DEPLOYMENT_FILTER_DESIGN.md  # Deployment 筛选设计文档
 ```
 
 ## 架构图
@@ -454,6 +466,21 @@ export DATABASE_PASSWORD=secret
 export JWT_SECRET=your-super-secret-key
 ```
 
+## 数据库初始化
+
+应用使用 MySQL 存储用户信息、权限配置和资源变更历史。需要按顺序执行以下迁移脚本：
+
+```bash
+# 创建数据库
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS k8s_manager DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# 执行迁移（按顺序）
+mysql -u root -p k8s_manager < backend/migrations/001_create_resource_histories_table.sql
+mysql -u root -p k8s_manager < backend/migrations/002_create_users_table.sql
+mysql -u root -p k8s_manager < backend/migrations/003_create_user_permissions_table.sql
+mysql -u root -p k8s_manager < backend/migrations/004_init_admin_user.sql
+```
+
 ## RBAC 权限说明
 
 应用需要以下 Kubernetes 权限：
@@ -463,6 +490,9 @@ export JWT_SECRET=your-super-secret-key
 | namespaces | get, list | 列出命名空间 |
 | nodes | get, list | 查看节点信息 |
 | pods | get, list, delete | Pod 管理 |
+| pods/log | get | 查看 Pod 日志 |
+| pods/exec | create, get | Pod 终端（exec） |
+| events | get, list | 查看 Pod 事件 |
 | pods (metrics) | get, list | Pod 监控指标 |
 | nodes (metrics) | get, list | 节点监控指标 |
 | configmaps | get, list, create, update, patch, delete | ConfigMap 完整管理 |
@@ -481,19 +511,71 @@ curl http://localhost:8080/health
 
 ## API 端点
 
+详细的 API 文档请参考 [API 接口文档](docs/API_DESIGN.md)。
+
+### 认证
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/auth/feishu/config` | 获取飞书 OAuth 配置 |
+| POST | `/api/v1/auth/feishu/login` | 飞书 OAuth 登录 |
+| GET | `/api/v1/auth/me` | 获取当前用户信息 |
+| POST | `/api/v1/auth/logout` | 退出登录 |
+
+### 集群与节点
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| POST | `/api/v1/auth/feishu/login` | 飞书登录 |
 | GET | `/api/v1/clusters` | 获取集群列表 |
+| GET | `/api/v1/clusters/:cluster` | 获取集群详情 |
+| POST | `/api/v1/clusters/:cluster/test-connection` | 测试集群连接 |
 | GET | `/api/v1/clusters/:cluster/namespaces` | 获取命名空间列表 |
-| GET | `/api/v1/clusters/:cluster/deployments` | 获取 Deployment 列表 |
-| GET | `/api/v1/clusters/:cluster/pods` | 获取 Pod 列表 |
-| GET | `/api/v1/clusters/:cluster/configmaps` | 获取 ConfigMap 列表 |
-| GET | `/api/v1/clusters/:cluster/services` | 获取 Service 列表 |
-| GET | `/api/v1/clusters/:cluster/hpa` | 获取 HPA 列表 |
 | GET | `/api/v1/clusters/:cluster/dashboard` | 获取 Dashboard 数据 |
-| GET | `/api/v1/clusters/:cluster/namespaces/:namespace/histories/:id/diff-previous` | 与上一版本 Diff 对比 |
+| GET | `/api/v1/clusters/:cluster/nodes` | 获取节点列表 |
+| GET | `/api/v1/clusters/:cluster/nodes/:name` | 获取节点详情 |
+
+### 资源管理（以下路径前缀：`/api/v1/clusters/:cluster/namespaces/:namespace`）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/configmaps` | 列表 / 创建 ConfigMap |
+| GET/PUT/DELETE | `/configmaps/:name` | 获取 / 更新 / 删除 ConfigMap |
+| GET/POST | `/deployments` | 列表 / 创建 Deployment |
+| GET/PUT/DELETE | `/deployments/:name` | 获取 / 更新 / 删除 Deployment |
+| GET | `/deployments/:name/pods` | 获取 Deployment 关联的 Pod |
+| GET/POST | `/services` | 列表 / 创建 Service |
+| GET/PUT/DELETE | `/services/:name` | 获取 / 更新 / 删除 Service |
+| GET/POST | `/hpas` | 列表 / 创建 HPA |
+| GET/PUT/DELETE | `/hpas/:name` | 获取 / 更新 / 删除 HPA |
+
+### Pod 管理（以下路径前缀：`/api/v1/clusters/:cluster/namespaces/:namespace`）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/pods` | 获取 Pod 列表（支持 `?deployment=` 筛选） |
+| GET | `/pods/:name` | 获取 Pod 详情 |
+| DELETE | `/pods/:name` | 删除 Pod（触发重启） |
+| GET | `/pods/:name/containers` | 获取 Pod 容器列表 |
+| GET | `/pods/:name/logs` | 获取 Pod 日志 |
+| GET | `/pods/:name/events` | 获取 Pod 事件 |
+| GET | `/pods/:name/exec` | WebSocket 终端（进入容器） |
+
+### 变更历史（以下路径前缀：`/api/v1/clusters/:cluster/namespaces/:namespace`）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/histories` | 获取变更历史列表 |
+| GET | `/histories/:id` | 获取历史记录详情 |
+| GET | `/histories/diff` | 两个版本之间的 Diff 对比 |
+| GET | `/histories/:id/diff-previous` | 与上一版本 Diff 对比 |
+| POST | `/histories/:id/rollback` | 回滚到指定版本 |
+
+### 用户管理（仅管理员）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/admin/users` | 获取用户列表 |
+| GET | `/api/v1/admin/users/:user_id` | 获取用户详情 |
+| PUT | `/api/v1/admin/users/:user_id/role` | 修改用户角色 |
+| PUT | `/api/v1/admin/users/:user_id/status` | 修改用户状态 |
+| GET | `/api/v1/admin/users/:user_id/permissions` | 获取用户权限 |
+| PUT | `/api/v1/admin/users/:user_id/permissions` | 设置用户权限 |
+| POST | `/api/v1/admin/permissions/batch` | 批量设置权限 |
 
 ## 常见问题
 
