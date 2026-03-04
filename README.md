@@ -577,6 +577,127 @@ curl http://localhost:8080/health
 | PUT | `/api/v1/admin/users/:user_id/permissions` | 设置用户权限 |
 | POST | `/api/v1/admin/permissions/batch` | 批量设置权限 |
 
+## 飞书应用配置
+
+本项目使用飞书 OAuth 2.0 实现用户登录认证。部署前需要在[飞书开放平台](https://open.feishu.cn/)创建应用并完成配置。
+
+### 创建飞书应用
+
+1. 登录[飞书开放平台](https://open.feishu.cn/)，进入「开发者后台」
+2. 点击「创建企业自建应用」
+3. 填写应用名称（如 `K8s-Manager`）和描述
+4. 记录 `App ID` 和 `App Secret`，填入配置文件
+
+### 开通应用能力
+
+在应用的「添加应用能力」中，开通以下能力：
+
+| 能力 | 说明 |
+|------|------|
+| **网页应用** | 必须开通，用于 OAuth 网页登录 |
+
+### 配置安全设置
+
+在应用的「安全设置」中：
+
+- **重定向 URL**：添加 OAuth 回调地址，与配置文件中的 `redirect_uri` 保持一致
+  - 本地开发：`http://localhost:3000/auth/feishu/callback`
+  - 生产环境：`https://your-domain.com/auth/feishu/callback`
+
+### 申请权限范围
+
+在应用的「权限管理」中，申请以下 OAuth 权限范围（Scope）：
+
+| 权限范围 | 权限名称 | 是否必须 | 说明 |
+|----------|----------|----------|------|
+| `contact:user.base:readonly` | 获取用户基本信息 | **必须** | 获取用户 open_id、名称、头像 |
+| `contact:user.email:readonly` | 获取用户邮箱 | 推荐 | 获取用户邮箱地址 |
+| `contact:user.phone:readonly` | 获取用户手机号 | 可选 | 获取用户手机号 |
+| `contact:user.employee_id:readonly` | 获取用户工号 | 可选 | 获取用户工号信息 |
+
+### 发布应用
+
+1. 在「版本管理与发布」中创建版本
+2. 设置可用范围（全部员工 或 指定部门/人员）
+3. 提交审核并发布
+
+> **注意**：应用未发布前，仅应用创建者可以登录测试。
+
+### 登录流程说明
+
+```
+┌──────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────┐
+│  Browser │     │   Frontend   │     │   Backend    │     │  飞书 API │
+└────┬─────┘     └──────┬───────┘     └──────┬───────┘     └────┬─────┘
+     │  1. 点击登录      │                    │                  │
+     │──────────────────▶│                    │                  │
+     │                   │  2. 获取飞书配置    │                  │
+     │                   │───────────────────▶│                  │
+     │                   │  3. 返回 AppID 等   │                  │
+     │                   │◀───────────────────│                  │
+     │  4. 重定向到飞书授权页                   │                  │
+     │◀──────────────────│                    │                  │
+     │  5. 用户在飞书授权                       │                  │
+     │─────────────────────────────────────────────────────────▶│
+     │  6. 飞书回调携带 code                    │                  │
+     │◀─────────────────────────────────────────────────────────│
+     │  7. 发送 code 到后端                    │                  │
+     │──────────────────▶│───────────────────▶│                  │
+     │                   │                    │  8. code 换 token │
+     │                   │                    │─────────────────▶│
+     │                   │                    │  9. 获取用户信息   │
+     │                   │                    │─────────────────▶│
+     │                   │                    │  10. 返回用户信息  │
+     │                   │                    │◀─────────────────│
+     │                   │  11. 创建/更新用户，签发 JWT            │
+     │                   │◀───────────────────│                  │
+     │  12. 返回 JWT Token + 用户信息          │                  │
+     │◀──────────────────│                    │                  │
+```
+
+**流程说明：**
+1. 前端获取飞书 OAuth 配置（`App ID`、`redirect_uri`、`authorize_url`）
+2. 构建授权 URL 并重定向用户到飞书登录页
+3. 用户在飞书完成授权后，飞书回调 `redirect_uri` 并携带 `authorization_code`
+4. 前端将 `code` 发送到后端 `/api/v1/auth/feishu/login`
+5. 后端用 `code` 向飞书换取 `user_access_token`
+6. 后端用 `token` 获取用户信息（open_id、姓名、头像、邮箱等）
+7. 后端在数据库中创建或更新用户记录，签发 JWT Token
+8. 前端存储 JWT Token，后续请求通过 `Authorization: Bearer <token>` 进行认证
+
+### 用户信息存储
+
+通过飞书 OAuth 获取的用户信息将存储到数据库：
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `id` | `open_id` | 飞书用户唯一标识，作为主键 |
+| `name` | `name` | 用户姓名 |
+| `email` | `email` | 用户邮箱（需申请权限） |
+| `mobile` | `mobile` | 手机号（需申请权限） |
+| `avatar_url` | `picture` | 用户头像 URL |
+| `employee_id` | `employee_no` | 工号（需申请权限） |
+| `role` | - | 系统角色：`admin` / `user`，默认 `user` |
+| `status` | - | 用户状态：`active` / `disabled`，默认 `active` |
+
+### 配置示例
+
+```yaml
+feishu:
+  app_id: "cli_xxxxxxxxxx"          # 飞书应用 App ID
+  app_secret: "xxxxxxxxxxxxxxxx"     # 飞书应用 App Secret
+  redirect_uri: "https://your-domain.com/auth/feishu/callback"  # OAuth 回调地址
+  authorize_url: "https://passport.feishu.cn/suite/passport/oauth/authorize"  # 飞书授权地址（通常无需修改）
+```
+
+支持通过环境变量覆盖：
+
+```bash
+export FEISHU_APP_ID=cli_xxxxxxxxxx
+export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxx
+export FEISHU_REDIRECT_URI=https://your-domain.com/auth/feishu/callback
+```
+
 ## 常见问题
 
 ### Q: Pod 无法启动，提示权限不足？
