@@ -50,15 +50,27 @@ func main() {
 	historyRepo := repository.NewHistoryRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	permissionRepo := repository.NewPermissionRepository(db)
+	clusterRepo := repository.NewClusterRepository(db)
 
 	// 初始化 K8s 客户端管理器
 	clientManager := k8s.NewClientManager()
 
-	// 从配置文件加载集群
-	if err := clientManager.LoadFromConfig(cfg.Clusters); err != nil {
-		logger.Error(fmt.Sprintf("加载集群失败: %v", err))
+	// 初始化集群管理服务并加载集群
+	clusterManageService := service.NewClusterManageService(clusterRepo, clientManager, cfg.Encryption.Key)
+
+	// 迁移遗留的 config 来源集群为 database 来源
+	ctx := context.Background()
+	if err := clusterManageService.MigrateConfigClusters(ctx); err != nil {
+		logger.Error(fmt.Sprintf("迁移集群配置失败: %v", err))
 	}
-	logger.Info(fmt.Sprintf("已加载 %d 个集群", len(cfg.Clusters)))
+
+	// 从数据库加载所有集群到 ClientManager
+	if err := clusterManageService.LoadAllClusters(ctx); err != nil {
+		logger.Error(fmt.Sprintf("从数据库加载集群失败: %v", err))
+	}
+
+	clusterCount := len(clientManager.ListClusters())
+	logger.Info(fmt.Sprintf("已加载 %d 个集群", clusterCount))
 
 	// 初始化 Services
 	clusterService := service.NewClusterService(clientManager)
@@ -87,6 +99,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	adminHandler := handler.NewAdminHandler(userService)
 	terminalHandler := handler.NewTerminalHandler(terminalService, authService, userService)
+	clusterManageHandler := handler.NewClusterManageHandler(clusterManageService)
 
 	// 设置路由
 	r := router.NewRouter(
@@ -102,6 +115,7 @@ func main() {
 		authHandler,
 		adminHandler,
 		terminalHandler,
+		clusterManageHandler,
 		authService,
 		userService,
 	)
@@ -128,10 +142,10 @@ func main() {
 	logger.Info("正在关闭服务器...")
 
 	// 优雅关闭
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Fatal(fmt.Sprintf("服务器强制关闭: %v", err))
 	}
 

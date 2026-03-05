@@ -71,6 +71,35 @@ export interface Cluster {
   status: 'connected' | 'disconnected' | 'unknown';
 }
 
+export interface ClusterDetail {
+  id: number;
+  name: string;
+  description: string;
+  cluster_type: string;
+  api_server: string;
+  status: string;
+  source: string;
+  has_kubeconfig: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddClusterRequest {
+  name: string;
+  description: string;
+  kubeconfig: string;
+}
+
+export interface UpdateClusterRequest {
+  description?: string;
+  kubeconfig?: string;
+}
+
+export interface TestNewConnectionRequest {
+  kubeconfig: string;
+}
+
 export interface Namespace {
   name: string;
   status: string;

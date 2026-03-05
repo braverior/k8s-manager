@@ -2,17 +2,15 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: k8s-manager-config
-  namespace: k8s-manager
-  labels:
-    app: k8s-manager
+  namespace: default
 data:
   config.yaml: |
     server:
-      port: 8080
+      port: 8000
       mode: release
 
     database:
-      host: 127.0.0.1
+      host: 172.22.49.243
       port: 3306
       username: root
       password: 123456
@@ -27,20 +25,16 @@ data:
       output: stdout
       file_path: ""
 
-    clusters:
-      - name: local
-        description: 当前集群
-        type: in-cluster
-
-    # 飞书配置（请替换为实际值）
     feishu:
-      app_id: "cli_xxxxxxx"
-      app_secret: "xxxxxxxxxxx"
-      redirect_uri: "http://localhost:3000/auth/feishu/callback"
+      app_id: "cli_a90b5916e5b95cef"
+      app_secret: "lKw69iUeVSIzwScMh5FRvhlQtQU6YDrD"
+      redirect_uri: "http://localhost:30000/auth/feishu/callback"
       authorize_url: "https://passport.feishu.cn/suite/passport/oauth/authorize"
 
-    # JWT 配置
     jwt:
-      secret: "xxxxxxxxxxxxxxxxxxx"
+      secret: "v2Bw0YGa3gTO+HbDZHD2u8KcHMaGoE/qJHUTTogre5U="
       expire_time: 86400
       issuer: "k8s-manager"
+
+    encryption:
+      key: "your-encryption-key-please-change-in-production"

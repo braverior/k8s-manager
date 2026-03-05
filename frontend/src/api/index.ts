@@ -21,9 +21,12 @@ import type {
   User,
   UserPermissions,
   ClusterPermission,
-  BatchPermissionResult
+  BatchPermissionResult,
+  ClusterDetail,
+  AddClusterRequest,
+  UpdateClusterRequest,
+  TestNewConnectionRequest,
 } from '@/types';
-import { getClusterApiServer } from '@/config/clusters';
 
 const API_PREFIX = '/api/v1';
 
@@ -39,7 +42,7 @@ function buildUrl(apiServer: string, path: string): string {
   return `${base}${API_PREFIX}${path}`;
 }
 
-async function fetchApi<T>(apiServer: string, url: string, options?: RequestInit): Promise<T> {
+export async function fetchApi<T>(apiServer: string, url: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -79,10 +82,9 @@ async function fetchApi<T>(apiServer: string, url: string, options?: RequestInit
   return data.data;
 }
 
-// Helper: create a fetchApi bound to a specific cluster
-function clusterFetch<T>(cluster: string, url: string, options?: RequestInit): Promise<T> {
-  const apiServer = getClusterApiServer(cluster);
-  return fetchApi<T>(apiServer, url, options);
+// Helper: create a fetchApi bound to same-origin (all clusters go through the same backend)
+function clusterFetch<T>(_cluster: string, url: string, options?: RequestInit): Promise<T> {
+  return fetchApi<T>('', url, options);
 }
 
 // Auth APIs - need a cluster's apiServer since auth is per-cluster
@@ -255,6 +257,11 @@ export const deploymentApi = {
 
   getPods: (cluster: string, namespace: string, name: string) =>
     clusterFetch<Pod[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}/pods`),
+
+  restart: (cluster: string, namespace: string, name: string) =>
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/deployments/${name}/restart`, {
+      method: 'POST',
+    }),
 };
 
 // Pod APIs
@@ -379,5 +386,35 @@ export const hpaApi = {
   delete: (cluster: string, namespace: string, name: string) =>
     clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/hpas/${name}`, {
       method: 'DELETE',
+    }),
+};
+
+// Cluster Management APIs (admin only)
+export const clusterManageApi = {
+  list: () => fetchApi<ClusterDetail[]>('', '/admin/clusters'),
+
+  get: (name: string) => fetchApi<ClusterDetail>('', `/admin/clusters/${name}`),
+
+  add: (req: AddClusterRequest) =>
+    fetchApi<ClusterDetail>('', '/admin/clusters', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+
+  update: (name: string, req: UpdateClusterRequest) =>
+    fetchApi<ClusterDetail>('', `/admin/clusters/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    }),
+
+  delete: (name: string) =>
+    fetchApi<void>('', `/admin/clusters/${name}`, {
+      method: 'DELETE',
+    }),
+
+  testConnection: (req: TestNewConnectionRequest) =>
+    fetchApi<ConnectionTest>('', '/admin/clusters/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(req),
     }),
 };

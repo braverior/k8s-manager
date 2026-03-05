@@ -81,3 +81,17 @@ func (h *DeploymentHandler) Delete(c *gin.Context) {
 	}
 	response.NoContent(c)
 }
+
+func (h *DeploymentHandler) Restart(c *gin.Context) {
+	clusterName := c.Param("cluster")
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	operator := getOperator(c)
+
+	if err := h.svc.Restart(c.Request.Context(), clusterName, namespace, name, operator); err != nil {
+		handleError(c, err)
+		return
+	}
+	response.Success(c, nil)
+}

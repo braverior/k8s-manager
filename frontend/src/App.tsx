@@ -11,6 +11,7 @@ import { PodsPage } from '@/pages/PodsPage';
 import { HPAPage } from '@/pages/HPAPage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { ClustersPage } from '@/pages/ClustersPage';
 import { Loading } from '@/components/ui/spinner';
 
 // Protected route wrapper
@@ -60,6 +61,7 @@ function App() {
             <Route path="hpas" element={<HPAPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="clusters" element={<ClustersPage />} />
           </Route>
         </Routes>
       </AuthProvider>

@@ -50,6 +50,7 @@ const navItems = [
 
 const adminNavItems = [
   { path: '/users', label: 'Users', icon: Users },
+  { path: '/clusters', label: 'Clusters', icon: Server },
 ];
 
 export function Sidebar() {

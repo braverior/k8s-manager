@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -205,6 +206,32 @@ func (s *DeploymentService) Delete(ctx context.Context, clusterName, namespace, 
 		return apperrors.Wrap(err, 500, 500, "删除 Deployment 失败")
 	}
 
+	return nil
+}
+
+func (s *DeploymentService) Restart(ctx context.Context, clusterName, namespace, name, operator string) error {
+	client, err := s.clientManager.GetClient(clusterName)
+	if err != nil {
+		return apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
+	}
+
+	op := k8soperator.NewDeploymentOperator(client)
+	deploy, err := op.Get(ctx, namespace, name)
+	if err != nil {
+		return apperrors.Wrap(err, 404, 404, "Deployment 不存在")
+	}
+
+	// 等价于 kubectl rollout restart：在 pod template 上添加/更新 restart 注解
+	if deploy.Spec.Template.Annotations == nil {
+		deploy.Spec.Template.Annotations = make(map[string]string)
+	}
+	deploy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+	if _, err := op.Update(ctx, namespace, deploy); err != nil {
+		return apperrors.Wrap(err, 500, 500, "重启 Deployment 失败")
+	}
+
+	_ = s.saveHistory(ctx, clusterName, namespace, name, "", "restart", operator)
 	return nil
 }
 

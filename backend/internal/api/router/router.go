@@ -9,20 +9,21 @@ import (
 )
 
 type Router struct {
-	clusterHandler    *handler.ClusterHandler
-	configMapHandler  *handler.ConfigMapHandler
-	deploymentHandler *handler.DeploymentHandler
-	serviceHandler    *handler.ServiceHandler
-	hpaHandler        *handler.HPAHandler
-	historyHandler    *handler.HistoryHandler
-	podHandler        *handler.PodHandler
-	dashboardHandler  *handler.DashboardHandler
-	nodeHandler       *handler.NodeHandler
-	authHandler       *handler.AuthHandler
-	adminHandler      *handler.AdminHandler
-	terminalHandler   *handler.TerminalHandler
-	authSvc           *service.AuthService
-	userSvc           *service.UserService
+	clusterHandler       *handler.ClusterHandler
+	configMapHandler     *handler.ConfigMapHandler
+	deploymentHandler    *handler.DeploymentHandler
+	serviceHandler       *handler.ServiceHandler
+	hpaHandler           *handler.HPAHandler
+	historyHandler       *handler.HistoryHandler
+	podHandler           *handler.PodHandler
+	dashboardHandler     *handler.DashboardHandler
+	nodeHandler          *handler.NodeHandler
+	authHandler          *handler.AuthHandler
+	adminHandler         *handler.AdminHandler
+	terminalHandler      *handler.TerminalHandler
+	clusterManageHandler *handler.ClusterManageHandler
+	authSvc              *service.AuthService
+	userSvc              *service.UserService
 }
 
 func NewRouter(
@@ -38,24 +39,26 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	adminHandler *handler.AdminHandler,
 	terminalHandler *handler.TerminalHandler,
+	clusterManageHandler *handler.ClusterManageHandler,
 	authSvc *service.AuthService,
 	userSvc *service.UserService,
 ) *Router {
 	return &Router{
-		clusterHandler:    clusterHandler,
-		configMapHandler:  configMapHandler,
-		deploymentHandler: deploymentHandler,
-		serviceHandler:    serviceHandler,
-		hpaHandler:        hpaHandler,
-		historyHandler:    historyHandler,
-		podHandler:        podHandler,
-		dashboardHandler:  dashboardHandler,
-		nodeHandler:       nodeHandler,
-		authHandler:       authHandler,
-		adminHandler:      adminHandler,
-		terminalHandler:   terminalHandler,
-		authSvc:           authSvc,
-		userSvc:           userSvc,
+		clusterHandler:       clusterHandler,
+		configMapHandler:     configMapHandler,
+		deploymentHandler:    deploymentHandler,
+		serviceHandler:       serviceHandler,
+		hpaHandler:           hpaHandler,
+		historyHandler:       historyHandler,
+		podHandler:           podHandler,
+		dashboardHandler:     dashboardHandler,
+		nodeHandler:          nodeHandler,
+		authHandler:          authHandler,
+		adminHandler:         adminHandler,
+		terminalHandler:      terminalHandler,
+		clusterManageHandler: clusterManageHandler,
+		authSvc:              authSvc,
+		userSvc:              userSvc,
 	}
 }
 
@@ -118,6 +121,17 @@ func (r *Router) Setup(mode string) *gin.Engine {
 
 			// 批量权限管理
 			admin.POST("/permissions/batch", r.adminHandler.BatchSetPermissions)
+
+			// 集群管理
+			clusters := admin.Group("/clusters")
+			{
+				clusters.GET("", r.clusterManageHandler.ListClusters)
+				clusters.GET("/:name", r.clusterManageHandler.GetCluster)
+				clusters.POST("", r.clusterManageHandler.AddCluster)
+				clusters.PUT("/:name", r.clusterManageHandler.UpdateCluster)
+				clusters.DELETE("/:name", r.clusterManageHandler.DeleteCluster)
+				clusters.POST("/test-connection", r.clusterManageHandler.TestNewConnection)
+			}
 		}
 
 		// 需要认证和资源权限的接口
@@ -160,6 +174,7 @@ func (r *Router) Setup(mode string) *gin.Engine {
 					deployments.GET("/:name", r.deploymentHandler.Get)
 					deployments.PUT("/:name", r.deploymentHandler.Apply)
 					deployments.DELETE("/:name", r.deploymentHandler.Delete)
+					deployments.POST("/:name/restart", r.deploymentHandler.Restart)
 					// 获取 Deployment 关联的 Pod
 					deployments.GET("/:name/pods", r.podHandler.ListByDeployment)
 				}

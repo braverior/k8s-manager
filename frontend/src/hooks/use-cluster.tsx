@@ -1,6 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react';
-import { clusterApi } from '@/api';
-import { getClusters } from '@/config/clusters';
+import { clusterApi, fetchApi } from '@/api';
 import { useAuth } from '@/hooks/use-auth';
 import type { Cluster, Namespace } from '@/types';
 
@@ -14,18 +13,38 @@ interface ClusterContextType {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  refreshClusters: () => Promise<void>;
 }
 
 const ClusterContext = createContext<ClusterContextType | null>(null);
 
 export function ClusterProvider({ children }: { children: ReactNode }) {
   const { user, hasClusterPermission, hasNamespacePermission } = useAuth();
-  const [allClusters] = useState<Cluster[]>(() => getClusters());
+  const [allClusters, setAllClusters] = useState<Cluster[]>([]);
   const [allNamespaces, setAllNamespaces] = useState<Namespace[]>([]);
   const [selectedCluster, setSelectedCluster] = useState<string>('');
   const [selectedNamespace, setSelectedNamespace] = useState<string>('');
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error] = useState<string | null>(null);
+
+  // Fetch clusters from API
+  const fetchClusters = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchApi<Cluster[]>('', '/clusters');
+      setAllClusters(data || []);
+    } catch (err) {
+      console.error('Failed to fetch clusters:', err);
+      setAllClusters([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load clusters on mount
+  useEffect(() => {
+    fetchClusters();
+  }, [fetchClusters]);
 
   // Filter clusters based on permissions
   const clusters = allClusters.filter((c) => hasClusterPermission(c.name));
@@ -84,6 +103,10 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchNamespaces, selectedCluster]);
 
+  const refreshClusters = useCallback(async () => {
+    await fetchClusters();
+  }, [fetchClusters]);
+
   return (
     <ClusterContext.Provider
       value={{
@@ -96,6 +119,7 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         refresh,
+        refreshClusters,
       }}
     >
       {children}

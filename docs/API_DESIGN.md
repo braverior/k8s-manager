@@ -3,7 +3,7 @@
 ## 基础地址
 
 ```
-http://localhost:8080/api/v1
+http://localhost/api/v1
 ```
 
 ## 响应格式
@@ -55,12 +55,15 @@ http://localhost:8080/api/v1
 | 4020 | 404 | 用户不存在 |
 | 4021 | 403 | 需要管理员权限 |
 | 4022 | 400 | 不能修改自己的管理员角色 |
+| 4030 | 409 | 集群已存在 |
+| 4032 | 400 | 缺少 kubeconfig |
+| 4033 | 400 | kubeconfig 格式无效 |
 
 ---
 
-## 集群管理
+## 集群信息查询
 
-> **注意**：集群配置从配置文件加载，不支持通过 API 创建、更新或删除集群。
+> 以下接口用于查询集群和命名空间信息，供前端展示和选择器使用。集群的增删改操作请参见「集群管理（管理员）」章节。
 
 ### 获取集群列表
 
@@ -710,6 +713,29 @@ DELETE /clusters/:cluster/namespaces/:namespace/deployments/:name
 ```
 
 ### 获取 Deployment 关联的 Pod
+
+```
+GET /clusters/:cluster/namespaces/:namespace/deployments/:name/pods
+```
+
+### 重启 Deployment
+
+触发滚动重启（等价于 `kubectl rollout restart`），通过更新 Pod Template 注解实现。
+
+```
+POST /clusters/:cluster/namespaces/:namespace/deployments/:name/restart
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": null
+}
+```
+
+### 获取 Deployment 关联的 Pod（响应示例）
 
 ```
 GET /clusters/:cluster/namespaces/:namespace/deployments/:name/pods
@@ -2189,6 +2215,241 @@ POST /admin/permissions/batch
   }
 }
 ```
+
+---
+
+## 集群管理（管理员）
+
+> 以下接口仅管理员可访问，用于动态管理 Kubernetes 集群。集群信息持久化到数据库，kubeconfig 使用 AES-256-GCM 加密存储。
+
+### 获取集群管理列表
+
+```
+GET /admin/clusters
+```
+
+**请求头：**
+```
+Authorization: Bearer {token}
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "name": "production",
+      "description": "生产环境集群",
+      "cluster_type": "kubeconfig",
+      "api_server": "https://10.0.0.1:6443",
+      "status": "connected",
+      "source": "database",
+      "has_kubeconfig": true,
+      "created_by": "张三",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "staging",
+      "description": "预发布环境",
+      "cluster_type": "kubeconfig",
+      "api_server": "https://staging-api.example.com:6443",
+      "status": "connected",
+      "source": "database",
+      "has_kubeconfig": true,
+      "created_by": "张三",
+      "created_at": "2024-03-01T10:00:00Z",
+      "updated_at": "2024-03-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| id | int | 集群 ID |
+| name | string | 集群名称（唯一） |
+| description | string | 集群描述 |
+| cluster_type | string | 集群类型（kubeconfig） |
+| api_server | string | Kubernetes API Server 地址 |
+| status | string | 连接状态（connected / disconnected） |
+| source | string | 数据来源 |
+| has_kubeconfig | bool | 是否有 kubeconfig 数据（不返回原始内容） |
+| created_by | string | 创建者 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+---
+
+### 获取集群管理详情
+
+```
+GET /admin/clusters/:name
+```
+
+**路径参数：**
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| name | string | 集群名称 |
+
+**响应格式同列表中的单个集群对象。**
+
+---
+
+### 添加集群
+
+通过上传 kubeconfig 添加新集群。系统会自动测试连接，成功后加密存储并加载到内存。
+
+```
+POST /admin/clusters
+```
+
+**请求参数：**
+```json
+{
+  "name": "staging",
+  "description": "预发布环境集群",
+  "kubeconfig": "apiVersion: v1\nkind: Config\nclusters:\n- cluster:\n    server: https://..."
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 是否必填 | 描述 |
+|------|------|----------|------|
+| name | string | 是 | 集群名称（仅允许字母、数字、`-`、`_`） |
+| description | string | 否 | 集群描述 |
+| kubeconfig | string | 是 | kubeconfig 文件内容（YAML 格式） |
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": 2,
+    "name": "staging",
+    "description": "预发布环境集群",
+    "cluster_type": "kubeconfig",
+    "api_server": "https://staging-api.example.com:6443",
+    "status": "connected",
+    "source": "database",
+    "has_kubeconfig": true,
+    "created_by": "张三",
+    "created_at": "2024-03-01T10:00:00Z",
+    "updated_at": "2024-03-01T10:00:00Z"
+  }
+}
+```
+
+**错误响应：**
+| 错误码 | 描述 |
+|--------|------|
+| 4030 | 集群名称已存在 |
+| 4033 | kubeconfig 格式无效 |
+| 4002 | 集群连接失败 |
+
+---
+
+### 更新集群
+
+更新集群描述或 kubeconfig。如提供新的 kubeconfig，系统会重新测试连接。
+
+```
+PUT /admin/clusters/:name
+```
+
+**请求参数：**
+```json
+{
+  "description": "更新后的描述",
+  "kubeconfig": "apiVersion: v1\nkind: Config\n..."
+}
+```
+
+**字段说明：**
+| 字段 | 类型 | 是否必填 | 描述 |
+|------|------|----------|------|
+| description | string | 否 | 新的集群描述 |
+| kubeconfig | string | 否 | 新的 kubeconfig（留空则保留原有） |
+
+**错误响应：**
+| 错误码 | 描述 |
+|--------|------|
+| 4033 | kubeconfig 格式无效 |
+
+---
+
+### 删除集群
+
+删除集群。同时清理关联的用户权限记录。
+
+```
+DELETE /admin/clusters/:name
+```
+
+**响应示例：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": null
+}
+```
+
+**错误响应：**
+| 错误码 | 描述 |
+|--------|------|
+| 404 | 集群不存在 |
+
+---
+
+### 测试新连接
+
+使用提供的 kubeconfig 测试连接（不保存），用于添加集群前的预检。
+
+```
+POST /admin/clusters/test-connection
+```
+
+**请求参数：**
+```json
+{
+  "kubeconfig": "apiVersion: v1\nkind: Config\n..."
+}
+```
+
+**响应示例（成功）：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "connection successful",
+    "version": "v1.28.3"
+  }
+}
+```
+
+**响应示例（失败）：**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "success": false,
+    "message": "failed to connect: dial tcp 10.0.0.1:6443: i/o timeout",
+    "version": ""
+  }
+}
+```
+
+> **注意**：连接测试失败时 HTTP 状态码仍为 200，通过 `data.success` 字段判断结果。
 
 ---
 

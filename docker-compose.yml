@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  k8s-manager:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend/configs/config.yaml:/app/configs/config.yaml:ro
+    restart: unless-stopped
+    # 如需通过环境变量覆盖配置文件中的敏感信息，取消以下注释：
+    # environment:
+    #   - DATABASE_PASSWORD=your-password
+    #   - JWT_SECRET=your-jwt-secret
+    #   - ENCRYPTION_KEY=your-encryption-key

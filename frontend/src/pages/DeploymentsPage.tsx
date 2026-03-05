@@ -23,6 +23,7 @@ import {
   Layers,
   Container,
   ExternalLink,
+  RotateCw,
 } from 'lucide-react';
 
 const DEFAULT_DEPLOYMENT_YAML = `apiVersion: apps/v1
@@ -170,6 +171,20 @@ export function DeploymentsPage() {
     }
   };
 
+  const handleRestart = async (deployment: Deployment) => {
+    try {
+      await deploymentApi.restart(selectedCluster, selectedNamespace, deployment.name);
+      toast({ title: 'Success', description: `Deployment "${deployment.name}" restarting` });
+      fetchDeployments();
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to restart Deployment',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const filteredDeployments = deployments.filter((d) =>
     d.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -277,6 +292,18 @@ export function DeploymentsPage() {
                         }}
                       >
                         <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Restart Deployment"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRestart(deployment);
+                        }}
+                      >
+                        <RotateCw className="w-4 h-4" />
                       </Button>
                       {isAdmin && (
                       <Button

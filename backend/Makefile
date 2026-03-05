@@ -1,4 +1,4 @@
-.PHONY: build run clean test tidy docker-build docker-push deploy undeploy
+.PHONY: build run clean test tidy docker-build docker-push
 
 # Variables
 IMAGE_NAME ?= k8s-manager
@@ -40,32 +40,3 @@ fmt:
 # Lint code
 lint:
 	golangci-lint run
-
-# Generate wire (if using wire for DI)
-wire:
-	wire ./...
-
-# Docker build
-docker-build:
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
-
-# Docker build with registry
-docker-build-push: docker-build
-ifdef REGISTRY
-	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
-	docker push $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
-else
-	@echo "REGISTRY is not set. Use: make docker-build-push REGISTRY=your-registry.com"
-endif
-
-# Deploy to Kubernetes
-deploy:
-	kubectl apply -k deploy/
-
-# Undeploy from Kubernetes
-undeploy:
-	kubectl delete -k deploy/
-
-# Show Kubernetes resources
-status:
-	kubectl get all -n k8s-manager

@@ -67,3 +67,22 @@ type UserPermission struct {
 func (UserPermission) TableName() string {
 	return "user_permissions"
 }
+
+// Cluster 集群信息
+type Cluster struct {
+	ID             uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name           string    `gorm:"size:255;not null;uniqueIndex" json:"name"`
+	Description    string    `gorm:"size:1024" json:"description"`
+	ClusterType    string    `gorm:"column:cluster_type;size:50;not null;default:kubeconfig" json:"cluster_type"`
+	KubeconfigData string    `gorm:"column:kubeconfig_data;type:text" json:"-"`     // AES 加密存储
+	APIServer      string    `gorm:"column:api_server;size:1024" json:"api_server"` // 缓存显示用
+	Status         string    `gorm:"size:50;not null;default:disconnected" json:"status"`
+	Source         string    `gorm:"size:50;not null;default:database" json:"source"` // config | database
+	CreatedBy      string    `gorm:"column:created_by;size:255" json:"created_by"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (Cluster) TableName() string {
+	return "clusters"
+}

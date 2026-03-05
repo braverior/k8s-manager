@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api';
-import { getClusters } from '@/config/clusters';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,11 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Layers } from 'lucide-react';
 
 function getAuthApiServer(): string {
-  const clusters = getClusters();
-  if (clusters.length === 0) {
-    throw new Error('No clusters configured');
-  }
-  return clusters[0].api_server;
+  return '';
 }
 
 export function LoginPage() {

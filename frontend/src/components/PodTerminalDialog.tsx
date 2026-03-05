@@ -19,7 +19,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Terminal as TerminalIcon, RefreshCw, X, Maximize2, Minimize2 } from 'lucide-react';
-import { getClusterApiServer } from '@/config/clusters';
 import type { Pod, PodContainer, TerminalMessage } from '@/types';
 
 interface PodTerminalDialogProps {
@@ -185,11 +184,9 @@ export function PodTerminalDialog({
       return;
     }
 
-    // Build WebSocket URL from cluster api_server
-    const apiServer = getClusterApiServer(cluster);
-    const apiUrl = new URL(apiServer);
-    const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = apiUrl.host;
+    // Build WebSocket URL using same-origin
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
     const wsUrl = `${protocol}//${host}/api/v1/clusters/${cluster}/namespaces/${namespace}/pods/${pod.name}/exec?token=${encodeURIComponent(token)}&container=${encodeURIComponent(selectedContainer)}`;
 
     console.log('[Terminal] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));

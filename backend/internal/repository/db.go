@@ -30,6 +30,7 @@ func NewDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		&entity.ResourceHistory{},
 		&entity.User{},
 		&entity.UserPermission{},
+		&entity.Cluster{},
 	); err != nil {
 		return nil, err
 	}

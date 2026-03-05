@@ -8,12 +8,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig    `mapstructure:"server"`
-	Database DatabaseConfig  `mapstructure:"database"`
-	Log      LogConfig       `mapstructure:"log"`
-	Clusters []ClusterConfig `mapstructure:"clusters"`
-	Feishu   FeishuConfig    `mapstructure:"feishu"`
-	JWT      JWTConfig       `mapstructure:"jwt"`
+	Server     ServerConfig     `mapstructure:"server"`
+	Database   DatabaseConfig   `mapstructure:"database"`
+	Log        LogConfig        `mapstructure:"log"`
+	Feishu     FeishuConfig     `mapstructure:"feishu"`
+	JWT        JWTConfig        `mapstructure:"jwt"`
+	Encryption EncryptionConfig `mapstructure:"encryption"`
 }
 
 type ServerConfig struct {
@@ -39,13 +39,6 @@ type LogConfig struct {
 	FilePath string `mapstructure:"file_path"`
 }
 
-type ClusterConfig struct {
-	Name           string `mapstructure:"name"`
-	Description    string `mapstructure:"description"`
-	Type           string `mapstructure:"type"`            // in-cluster 或 kubeconfig，默认 in-cluster
-	KubeconfigPath string `mapstructure:"kubeconfig_path"` // 仅 type=kubeconfig 时需要
-}
-
 // FeishuConfig 飞书配置
 type FeishuConfig struct {
 	AppID        string `mapstructure:"app_id"`        // 飞书应用 App ID
@@ -59,6 +52,11 @@ type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`      // JWT 签名密钥
 	ExpireTime int    `mapstructure:"expire_time"` // 过期时间（秒）
 	Issuer     string `mapstructure:"issuer"`      // 签发者
+}
+
+// EncryptionConfig 加密配置
+type EncryptionConfig struct {
+	Key string `mapstructure:"key"` // AES 加密密钥
 }
 
 func (d *DatabaseConfig) DSN() string {
@@ -82,6 +80,7 @@ func Load(configPath string) (*Config, error) {
 	viper.BindEnv("feishu.redirect_uri", "FEISHU_REDIRECT_URI")
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
 	viper.BindEnv("database.password", "DATABASE_PASSWORD")
+	viper.BindEnv("encryption.key", "ENCRYPTION_KEY")
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -101,6 +100,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if cfg.JWT.Issuer == "" {
 		cfg.JWT.Issuer = "k8s-manager"
+	}
+	if cfg.Encryption.Key == "" {
+		cfg.Encryption.Key = "k8s-manager-default-encryption-key"
 	}
 
 	globalConfig = &cfg

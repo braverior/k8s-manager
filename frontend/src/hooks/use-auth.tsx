@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { authApi } from '@/api';
-import { getClusters } from '@/config/clusters';
 import type { User } from '@/types';
 
 interface AuthContextType {
@@ -18,13 +17,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Auth API uses the first cluster's api_server
+// Auth API uses same-origin (backend is co-located)
 function getAuthApiServer(): string {
-  const clusters = getClusters();
-  if (clusters.length === 0) {
-    throw new Error('No clusters configured');
-  }
-  return clusters[0].api_server;
+  return '';
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

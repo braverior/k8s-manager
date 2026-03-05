@@ -68,6 +68,12 @@ var (
 	ErrUserNotFound          = New(4020, http.StatusNotFound, "user not found")
 	ErrAdminRequired         = New(4021, http.StatusForbidden, "admin permission required")
 	ErrCannotModifySelfRole  = New(4022, http.StatusBadRequest, "cannot modify your own admin role")
+
+	// 集群管理相关错误
+	ErrClusterAlreadyExists  = New(4030, http.StatusConflict, "cluster already exists")
+	ErrClusterIsConfigSource = New(4031, http.StatusBadRequest, "cannot modify config-sourced cluster")
+	ErrKubeconfigRequired    = New(4032, http.StatusBadRequest, "kubeconfig is required")
+	ErrKubeconfigInvalid     = New(4033, http.StatusBadRequest, "kubeconfig is invalid")
 )
 
 func IsNotFound(err error) bool {
