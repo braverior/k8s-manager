@@ -7,23 +7,23 @@
 ## 界面预览
 
 **Dashboard：**
-<img width="2998" height="1534" alt="Dashboard" src="https://github.com/user-attachments/assets/c068a936-0bed-4518-9645-4fd1b0c27639" />
+<img width="2998"  alt="Dashboard" src="https://github.com/user-attachments/assets/c068a936-0bed-4518-9645-4fd1b0c27639" />
 
 **Nodes：**
-<img width="2956" height="1420" alt="Nodes" src="https://github.com/user-attachments/assets/0dd4183f-9b0c-420f-947e-15b6945ab504" />
+<img width="2956"  alt="Nodes" src="https://github.com/user-attachments/assets/0dd4183f-9b0c-420f-947e-15b6945ab504" />
 
 **ConfigMaps：**
-<img width="2978" height="1428" alt="ConfigMaps" src="https://github.com/user-attachments/assets/ffed82b1-becf-47d2-b6da-213f8d3f56c7" />
+<img width="2978" alt="ConfigMaps" src="https://github.com/user-attachments/assets/ffed82b1-becf-47d2-b6da-213f8d3f56c7" />
 
 **Deployments：**
-<img width="2962" height="1398" alt="Deployments" src="https://github.com/user-attachments/assets/29a3941a-94c2-46b8-881c-cb9567dca9b3" />
-<img width="2932" height="1528" alt="Deployment Detail" src="https://github.com/user-attachments/assets/a9614a7d-1eda-4a42-af60-2cdd87b08c39" />
+<img width="2962"  alt="Deployments" src="https://github.com/user-attachments/assets/29a3941a-94c2-46b8-881c-cb9567dca9b3" />
+<img width="2932"  alt="Deployment Detail" src="https://github.com/user-attachments/assets/a9614a7d-1eda-4a42-af60-2cdd87b08c39" />
 
 **HPAs：**
-<img width="2926" height="1412" alt="HPAs" src="https://github.com/user-attachments/assets/ef38906d-e64c-4c32-9a6d-b5fb1f68d66e" />
+<img width="2926"  alt="HPAs" src="https://github.com/user-attachments/assets/ef38906d-e64c-4c32-9a6d-b5fb1f68d66e" />
 
 **Change History：**
-<img width="2962" height="1456" alt="Change History" src="https://github.com/user-attachments/assets/c47c4211-69b4-4c7a-b337-6b370c439cea" />
+<img width="2962"  alt="Change History" src="https://github.com/user-attachments/assets/c47c4211-69b4-4c7a-b337-6b370c439cea" />
 
 ## 功能特性
 

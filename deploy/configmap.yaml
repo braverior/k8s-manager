@@ -8,7 +8,6 @@ data:
     server:
       port: 8000
       mode: release
-
     database:
       host: 172.22.49.243
       port: 3306
@@ -18,23 +17,19 @@ data:
       charset: utf8mb4
       max_idle_conns: 10
       max_open_conns: 100
-
     log:
       level: info
       format: json
       output: stdout
       file_path: ""
-
     feishu:
       app_id: "cli_a90b5916e5b95cef"
       app_secret: "lKw69iUeVSIzwScMh5FRvhlQtQU6YDrD"
       redirect_uri: "http://localhost:30000/auth/feishu/callback"
       authorize_url: "https://passport.feishu.cn/suite/passport/oauth/authorize"
-
     jwt:
       secret: "v2Bw0YGa3gTO+HbDZHD2u8KcHMaGoE/qJHUTTogre5U="
       expire_time: 86400
       issuer: "k8s-manager"
-
     encryption:
       key: "your-encryption-key-please-change-in-production"

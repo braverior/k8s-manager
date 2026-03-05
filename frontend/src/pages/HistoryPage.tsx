@@ -155,6 +155,8 @@ export function HistoryPage() {
         return <Badge variant="secondary">Update</Badge>;
       case 'delete':
         return <Badge variant="destructive">Delete</Badge>;
+      case 'restart':
+        return <Badge variant="warning">Restart</Badge>;
       default:
         return <Badge variant="outline">{operation}</Badge>;
     }
@@ -272,7 +274,7 @@ export function HistoryPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">#{record.id}</Badge>
-                    {record.operation !== 'delete' && (
+                    {record.operation !== 'delete' && record.operation !== 'restart' && (
                       <Button
                         variant="ghost"
                         size="sm"

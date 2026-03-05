@@ -354,7 +354,7 @@ export function ClustersPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".yaml,.yml,.conf,.config"
+                  accept=".yaml,.yml,.conf,.config,-config"
                   className="hidden"
                   onChange={(e) => handleFileUpload(e, setAddKubeconfig)}
                 />
@@ -431,7 +431,7 @@ export function ClustersPage() {
                 <input
                   ref={editFileInputRef}
                   type="file"
-                  accept=".yaml,.yml,.conf,.config"
+                  accept=".yaml,.yml,.conf,.config,-config"
                   className="hidden"
                   onChange={(e) => handleFileUpload(e, setEditKubeconfig)}
                 />

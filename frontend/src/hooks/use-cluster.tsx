@@ -14,6 +14,8 @@ interface ClusterContextType {
   error: string | null;
   refresh: () => Promise<void>;
   refreshClusters: () => Promise<void>;
+  defaultCluster: string;
+  setDefaultCluster: (cluster: string) => void;
 }
 
 const ClusterContext = createContext<ClusterContextType | null>(null);
@@ -26,6 +28,18 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
   const [selectedNamespace, setSelectedNamespace] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error] = useState<string | null>(null);
+  const [defaultCluster, setDefaultClusterState] = useState<string>(() => {
+    return localStorage.getItem('default_cluster') || '';
+  });
+
+  const setDefaultCluster = useCallback((cluster: string) => {
+    setDefaultClusterState(cluster);
+    if (cluster) {
+      localStorage.setItem('default_cluster', cluster);
+    } else {
+      localStorage.removeItem('default_cluster');
+    }
+  }, []);
 
   // Fetch clusters from API
   const fetchClusters = useCallback(async () => {
@@ -69,12 +83,13 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (clusters.length > 0) {
       if (!selectedCluster || !clusters.some((c) => c.name === selectedCluster)) {
-        setSelectedCluster(clusters[0].name);
+        const defaultExists = defaultCluster && clusters.some((c) => c.name === defaultCluster);
+        setSelectedCluster(defaultExists ? defaultCluster : clusters[0].name);
       }
     } else {
       setSelectedCluster('');
     }
-  }, [clusters, selectedCluster, user]);
+  }, [clusters, selectedCluster, user, defaultCluster]);
 
   // Fetch namespaces when cluster changes
   useEffect(() => {
@@ -120,6 +135,8 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
         error,
         refresh,
         refreshClusters,
+        defaultCluster,
+        setDefaultCluster,
       }}
     >
       {children}

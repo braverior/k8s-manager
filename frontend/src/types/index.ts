@@ -133,7 +133,7 @@ export interface HistoryRecord {
   resource_type: 'ConfigMap' | 'Deployment' | 'Service' | 'HPA';
   resource_name: string;
   version: number;
-  operation: 'create' | 'update' | 'delete';
+  operation: 'create' | 'update' | 'delete' | 'restart' | string;
   operator: string;
   created_at: string;
   content?: string;

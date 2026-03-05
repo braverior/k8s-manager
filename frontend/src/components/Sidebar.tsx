@@ -36,6 +36,7 @@ import {
   Phone,
   Sun,
   Moon,
+  Star,
 } from 'lucide-react';
 
 const navItems = [
@@ -64,6 +65,7 @@ export function Sidebar() {
     selectedNamespace,
     setSelectedCluster,
     setSelectedNamespace,
+    defaultCluster,
   } = useCluster();
 
   const handleLogout = async () => {
@@ -106,13 +108,23 @@ export function Sidebar() {
                 <SelectContent>
                   {clusters.map((cluster) => (
                     <SelectItem key={cluster.name} value={cluster.name}>
-                      <span className="truncate">{cluster.name}</span>
-                      <Badge
-                        variant={cluster.status === 'connected' ? 'success' : 'destructive'}
-                        className="text-[10px] px-1.5 py-0 shrink-0"
-                      >
-                        {cluster.status}
-                      </Badge>
+                      <span className="flex items-center gap-1.5 truncate">
+                        {cluster.name}
+                        {cluster.name === defaultCluster && (
+                          <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 shrink-0" />
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full shrink-0',
+                          cluster.status === 'connected'
+                            ? 'bg-green-500'
+                            : cluster.status === 'disconnected'
+                              ? 'bg-red-500'
+                              : 'bg-yellow-500'
+                        )}
+                        title={cluster.status}
+                      />
                     </SelectItem>
                   ))}
                 </SelectContent>

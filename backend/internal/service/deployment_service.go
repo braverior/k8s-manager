@@ -227,11 +227,13 @@ func (s *DeploymentService) Restart(ctx context.Context, clusterName, namespace,
 	}
 	deploy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 
-	if _, err := op.Update(ctx, namespace, deploy); err != nil {
+	result, err := op.Update(ctx, namespace, deploy)
+	if err != nil {
 		return apperrors.Wrap(err, 500, 500, "重启 Deployment 失败")
 	}
 
-	_ = s.saveHistory(ctx, clusterName, namespace, name, "", "restart", operator)
+	yamlContent, _ := utils.EncodeToYAML(result, "apps/v1", "Deployment")
+	_ = s.saveHistory(ctx, clusterName, namespace, name, yamlContent, "restart", operator)
 	return nil
 }
 

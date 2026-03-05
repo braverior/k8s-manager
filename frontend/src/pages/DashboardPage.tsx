@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loading } from '@/components/ui/spinner';
-import { formatMemory, formatCpu } from '@/lib/utils';
+import { formatMemory, formatCpu, cn } from '@/lib/utils';
 import type { ClusterDashboard } from '@/types';
 import {
   Server,
@@ -24,6 +24,7 @@ import {
   Clock,
   AlertTriangle,
   Gauge,
+  Star,
 } from 'lucide-react';
 
 function ProgressRing({ percentage, size = 120, strokeWidth = 10, color = 'text-primary' }: {
@@ -94,7 +95,7 @@ function StatCard({ title, value, icon: Icon, subValue, color = 'text-primary' }
 }
 
 export function DashboardPage() {
-  const { selectedCluster, clusters } = useCluster();
+  const { selectedCluster, clusters, defaultCluster, setDefaultCluster } = useCluster();
   const { toast } = useToast();
 
   const [dashboard, setDashboard] = useState<ClusterDashboard | null>(null);
@@ -177,9 +178,43 @@ export function DashboardPage() {
             </Badge>
           </div>
         </div>
-        <Button variant="outline" size="icon" onClick={fetchDashboard}>
-          <RefreshCw className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={defaultCluster === selectedCluster ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (defaultCluster === selectedCluster) {
+                setDefaultCluster('');
+                toast({
+                  title: 'Default cluster cleared',
+                  description: 'The first available cluster will be auto-selected on page load.',
+                });
+              } else {
+                setDefaultCluster(selectedCluster);
+                toast({
+                  title: 'Default cluster set',
+                  description: `"${selectedCluster}" will be auto-selected on page load.`,
+                });
+              }
+            }}
+            title={
+              defaultCluster === selectedCluster
+                ? 'Click to clear default cluster'
+                : 'Set as default cluster'
+            }
+          >
+            <Star
+              className={cn(
+                'w-4 h-4 mr-1.5',
+                defaultCluster === selectedCluster ? 'fill-current' : ''
+              )}
+            />
+            {defaultCluster === selectedCluster ? 'Default' : 'Set as Default'}
+          </Button>
+          <Button variant="outline" size="icon" onClick={fetchDashboard}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Resource Stats */}

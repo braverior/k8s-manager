@@ -3,3 +3,4 @@ server
 build.sh
 build-run.sh
 Dockerfile-tpl
+config.yaml
