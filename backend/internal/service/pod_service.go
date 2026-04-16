@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s_api_server/internal/k8s"
 	"k8s_api_server/internal/k8s/operator"
@@ -87,28 +87,38 @@ func (s *PodService) ListByDeployment(ctx context.Context, clusterName, namespac
 		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
 	}
 
-	// 先获取 Deployment 的 selector
-	deployOp := operator.NewDeploymentOperator(client)
-	deploy, err := deployOp.Get(ctx, namespace, deploymentName)
+	// 通过 ownerReferences 查找属于该 Deployment 的 ReplicaSet
+	rsList, err := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, apperrors.Wrap(err, 404, 404, "Deployment 不存在")
+		return nil, apperrors.Wrap(err, 500, 500, "获取 ReplicaSet 列表失败")
 	}
-
-	// 构建标签选择器
-	labelSelector := ""
-	for k, v := range deploy.Spec.Selector.MatchLabels {
-		if labelSelector != "" {
-			labelSelector += ","
+	rsNames := make(map[string]bool)
+	for _, rs := range rsList.Items {
+		for _, owner := range rs.OwnerReferences {
+			if owner.Kind == "Deployment" && owner.Name == deploymentName {
+				rsNames[rs.Name] = true
+				break
+			}
 		}
-		labelSelector += fmt.Sprintf("%s=%s", k, v)
 	}
 
 	metricsClient, _ := s.clientManager.GetMetricsClient(clusterName)
 	podOp := operator.NewPodOperator(client, metricsClient)
 
-	pods, err := podOp.ListByLabels(ctx, namespace, labelSelector)
+	// 获取所有 Pod，通过 ownerReferences 过滤属于目标 Deployment 的 Pod
+	allPods, err := podOp.List(ctx, namespace)
 	if err != nil {
 		return nil, apperrors.Wrap(err, 500, 500, "获取 Pod 列表失败")
+	}
+
+	var pods []corev1.Pod
+	for _, pod := range allPods {
+		for _, owner := range pod.OwnerReferences {
+			if owner.Kind == "ReplicaSet" && rsNames[owner.Name] {
+				pods = append(pods, pod)
+				break
+			}
+		}
 	}
 
 	// 获取所有 Pod 的指标

@@ -18,8 +18,9 @@ func NewDashboardHandler(svc *service.DashboardService) *DashboardHandler {
 // GetOverview 获取集群概览信息
 func (h *DashboardHandler) GetOverview(c *gin.Context) {
 	clusterName := c.Param("cluster")
+	namespace := c.Query("namespace")
 
-	overview, err := h.svc.GetOverview(c.Request.Context(), clusterName)
+	overview, err := h.svc.GetOverview(c.Request.Context(), clusterName, namespace)
 	if err != nil {
 		handleError(c, err)
 		return

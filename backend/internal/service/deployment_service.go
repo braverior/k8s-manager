@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -41,19 +40,36 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 		return nil, apperrors.Wrap(err, 500, 500, "获取 Deployment 列表失败")
 	}
 
-	// 获取所有 Pod 用于统计
+	// 获取所有 ReplicaSet，建立 RS -> Deployment 的归属映射
+	rsList, _ := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+	rsToDeployment := make(map[string]string)
+	if rsList != nil {
+		for _, rs := range rsList.Items {
+			for _, owner := range rs.OwnerReferences {
+				if owner.Kind == "Deployment" {
+					rsToDeployment[rs.Name] = owner.Name
+					break
+				}
+			}
+		}
+	}
+
+	// 获取所有 Pod，通过 RS ownerReferences 精确统计每个 Deployment 的 Pod 数量及状态
 	pods, _ := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	podCountByDeployment := make(map[string]int)
+	podStatusByDeployment := make(map[string]map[string]int)
 	if pods != nil {
 		for _, pod := range pods.Items {
 			for _, owner := range pod.OwnerReferences {
 				if owner.Kind == "ReplicaSet" {
-					for _, d := range deployments {
-						if len(owner.Name) > len(d.Name) && owner.Name[:len(d.Name)] == d.Name {
-							podCountByDeployment[d.Name]++
-							break
+					if deployName, ok := rsToDeployment[owner.Name]; ok {
+						podCountByDeployment[deployName]++
+						if podStatusByDeployment[deployName] == nil {
+							podStatusByDeployment[deployName] = make(map[string]int)
 						}
+						podStatusByDeployment[deployName][string(pod.Status.Phase)]++
 					}
+					break
 				}
 			}
 		}
@@ -74,8 +90,10 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 			Namespace:         d.Namespace,
 			Replicas:          replicas,
 			ReadyReplicas:     d.Status.ReadyReplicas,
+			UpdatedReplicas:   d.Status.UpdatedReplicas,
 			AvailableReplicas: d.Status.AvailableReplicas,
 			PodCount:          podCountByDeployment[d.Name],
+			PodStatusCounts:   podStatusByDeployment[d.Name],
 			YAML:              yamlContent,
 		})
 	}
@@ -94,16 +112,29 @@ func (s *DeploymentService) Get(ctx context.Context, clusterName, namespace, nam
 		return nil, apperrors.Wrap(err, 404, 404, "Deployment 不存在")
 	}
 
-	labelSelector := ""
-	for k, v := range d.Spec.Selector.MatchLabels {
-		if labelSelector != "" {
-			labelSelector += ","
+	// 通过 ReplicaSet ownerReferences 精确统计 Pod 数量
+	rsList, _ := client.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+	rsNames := make(map[string]bool)
+	if rsList != nil {
+		for _, rs := range rsList.Items {
+			for _, owner := range rs.OwnerReferences {
+				if owner.Kind == "Deployment" && owner.Name == name {
+					rsNames[rs.Name] = true
+					break
+				}
+			}
 		}
-		labelSelector += fmt.Sprintf("%s=%s", k, v)
 	}
 	podCount := 0
-	if pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector}); err == nil {
-		podCount = len(pods.Items)
+	if pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+		for _, pod := range pods.Items {
+			for _, owner := range pod.OwnerReferences {
+				if owner.Kind == "ReplicaSet" && rsNames[owner.Name] {
+					podCount++
+					break
+				}
+			}
+		}
 	}
 
 	yamlContent, err := utils.EncodeToYAML(d, "apps/v1", "Deployment")
@@ -121,6 +152,7 @@ func (s *DeploymentService) Get(ctx context.Context, clusterName, namespace, nam
 		Namespace:         d.Namespace,
 		Replicas:          replicas,
 		ReadyReplicas:     d.Status.ReadyReplicas,
+		UpdatedReplicas:   d.Status.UpdatedReplicas,
 		AvailableReplicas: d.Status.AvailableReplicas,
 		PodCount:          podCount,
 		YAML:              yamlContent,

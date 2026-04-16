@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { historyApi } from '@/api';
+import { historyApi, adminApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,6 @@ import {
   History,
   RefreshCw,
   Clock,
-  User,
   FileCode,
   ChevronLeft,
   ChevronRight,
@@ -50,6 +49,7 @@ export function HistoryPage() {
   const [resourceType, setResourceType] = useState('All');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [userAvatars, setUserAvatars] = useState<Record<string, string>>({});
 
   // Detail dialog
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -90,6 +90,16 @@ export function HistoryPage() {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  useEffect(() => {
+    adminApi.listUsers('', { page_size: 200 }).then((data) => {
+      const map: Record<string, string> = {};
+      (data.items || []).forEach((u) => {
+        if (u.name && u.avatar_url) map[u.name] = u.avatar_url;
+      });
+      setUserAvatars(map);
+    }).catch(() => {});
+  }, []);
 
   const fetchDetail = async (record: HistoryRecord) => {
     try {
@@ -264,8 +274,16 @@ export function HistoryPage() {
                           <Clock className="w-3.5 h-3.5" />
                           {new Date(record.created_at).toLocaleString()}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5" />
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 overflow-hidden">
+                            {userAvatars[record.operator] ? (
+                              <img src={userAvatars[record.operator]} alt={record.operator} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-[10px] font-medium text-primary-foreground">
+                                {(record.operator || 'S')[0].toUpperCase()}
+                              </span>
+                            )}
+                          </span>
                           {record.operator || 'system'}
                         </span>
                         <span>Version: {record.version}</span>
@@ -347,7 +365,15 @@ export function HistoryPage() {
           {/* Record Info */}
           <div className="flex items-center gap-4 py-2 px-3 bg-muted rounded-md text-sm">
             <div className="flex items-center gap-1.5">
-              <User className="w-4 h-4 text-muted-foreground" />
+              <span className="w-5 h-5 rounded-full bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center shrink-0 overflow-hidden">
+                {userAvatars[selectedRecord?.operator || ''] ? (
+                  <img src={userAvatars[selectedRecord?.operator || '']} alt={selectedRecord?.operator} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[10px] font-medium text-primary-foreground">
+                    {(selectedRecord?.operator || 'S')[0].toUpperCase()}
+                  </span>
+                )}
+              </span>
               <span className="text-muted-foreground">Operator:</span>
               <span className="font-medium">{selectedRecord?.operator || 'system'}</span>
             </div>

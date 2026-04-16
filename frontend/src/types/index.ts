@@ -116,8 +116,10 @@ export interface K8sResource {
 export interface Deployment extends K8sResource {
   replicas: number;
   ready_replicas: number;
+  updated_replicas: number;
   available_replicas: number;
   pod_count: number;
+  pod_status_counts?: Record<string, number>;
 }
 
 export interface ResourceRequest {

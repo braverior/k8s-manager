@@ -61,7 +61,7 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
   }, [fetchClusters]);
 
   // Filter clusters based on permissions
-  const clusters = allClusters.filter((c) => hasClusterPermission(c.name));
+  const clusters = allClusters.filter((c) => hasClusterPermission(c.name)).sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter namespaces based on permissions
   const namespaces = allNamespaces.filter((ns) =>

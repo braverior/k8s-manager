@@ -32,8 +32,8 @@ func cachedListOptions() metav1.ListOptions {
 	return metav1.ListOptions{ResourceVersion: "0"}
 }
 
-// GetOverview 获取集群概览信息
-func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) (*dto.DashboardResponse, error) {
+// GetOverview 获取集群概览信息，namespace 为空时查询所有命名空间
+func (s *DashboardService) GetOverview(ctx context.Context, clusterName string, namespace string) (*dto.DashboardResponse, error) {
 	client, err := s.clientManager.GetClient(clusterName)
 	if err != nil {
 		return nil, apperrors.Wrap(err, 400, 400, "获取集群客户端失败")
@@ -86,9 +86,9 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		return nil
 	})
 
-	// 获取所有命名空间的 Pod
+	// 获取 Pod（按命名空间过滤）
 	g.Go(func() error {
-		if pods, err := client.CoreV1().Pods("").List(gCtx, cachedListOptions()); err == nil {
+		if pods, err := client.CoreV1().Pods(namespace).List(gCtx, cachedListOptions()); err == nil {
 			stats := s.countPodsByPhase(pods.Items)
 			mu.Lock()
 			resp.Resources.Pods = stats
@@ -97,9 +97,9 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		return nil
 	})
 
-	// 获取所有命名空间的 Deployment
+	// 获取 Deployment（按命名空间过滤）
 	g.Go(func() error {
-		if deployments, err := client.AppsV1().Deployments("").List(gCtx, cachedListOptions()); err == nil {
+		if deployments, err := client.AppsV1().Deployments(namespace).List(gCtx, cachedListOptions()); err == nil {
 			mu.Lock()
 			resp.Resources.Deployments = len(deployments.Items)
 			mu.Unlock()
@@ -107,9 +107,9 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		return nil
 	})
 
-	// 获取所有命名空间的 Service
+	// 获取 Service（按命名空间过滤）
 	g.Go(func() error {
-		if services, err := client.CoreV1().Services("").List(gCtx, cachedListOptions()); err == nil {
+		if services, err := client.CoreV1().Services(namespace).List(gCtx, cachedListOptions()); err == nil {
 			mu.Lock()
 			resp.Resources.Services = len(services.Items)
 			mu.Unlock()
@@ -117,9 +117,9 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		return nil
 	})
 
-	// 获取所有命名空间的 ConfigMap
+	// 获取 ConfigMap（按命名空间过滤）
 	g.Go(func() error {
-		if configMaps, err := client.CoreV1().ConfigMaps("").List(gCtx, cachedListOptions()); err == nil {
+		if configMaps, err := client.CoreV1().ConfigMaps(namespace).List(gCtx, cachedListOptions()); err == nil {
 			mu.Lock()
 			resp.Resources.ConfigMaps = len(configMaps.Items)
 			mu.Unlock()
@@ -127,10 +127,10 @@ func (s *DashboardService) GetOverview(ctx context.Context, clusterName string) 
 		return nil
 	})
 
-	// 获取所有命名空间的 HPA
+	// 获取 HPA（按命名空间过滤）
 	g.Go(func() error {
 		hpaOp := k8soperator.NewHPAOperator(client)
-		if hpaList, err := hpaOp.List(gCtx, ""); err == nil {
+		if hpaList, err := hpaOp.List(gCtx, namespace); err == nil {
 			mu.Lock()
 			hpas = hpaList
 			resp.Resources.HPAs = len(hpaList)

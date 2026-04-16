@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { NodesPage } from '@/pages/NodesPage';
 import { ConfigMapsPage } from '@/pages/ConfigMapsPage';
 import { DeploymentsPage } from '@/pages/DeploymentsPage';
+import { ServicesPage } from '@/pages/ServicesPage';
 import { PodsPage } from '@/pages/PodsPage';
 import { HPAPage } from '@/pages/HPAPage';
 import { HistoryPage } from '@/pages/HistoryPage';
@@ -57,6 +58,7 @@ function App() {
             <Route path="nodes" element={<NodesPage />} />
             <Route path="configmaps" element={<ConfigMapsPage />} />
             <Route path="deployments" element={<DeploymentsPage />} />
+            <Route path="services" element={<ServicesPage />} />
             <Route path="pods" element={<PodsPage />} />
             <Route path="hpas" element={<HPAPage />} />
             <Route path="history" element={<HistoryPage />} />

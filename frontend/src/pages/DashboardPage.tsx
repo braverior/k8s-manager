@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { clusterApi } from '@/api';
+import { clusterApi, deploymentApi } from '@/api';
 import { useCluster } from '@/hooks/use-cluster';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loading } from '@/components/ui/spinner';
 import { formatMemory, formatCpu, cn } from '@/lib/utils';
-import type { ClusterDashboard } from '@/types';
+import type { ClusterDashboard, Deployment } from '@/types';
 import {
   Server,
   Box,
@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Gauge,
   Star,
+  RotateCw,
 } from 'lucide-react';
 
 function ProgressRing({ percentage, size = 120, strokeWidth = 10, color = 'text-primary' }: {
@@ -95,17 +96,19 @@ function StatCard({ title, value, icon: Icon, subValue, color = 'text-primary' }
 }
 
 export function DashboardPage() {
-  const { selectedCluster, clusters, defaultCluster, setDefaultCluster } = useCluster();
+  const { selectedCluster, selectedNamespace, clusters, defaultCluster, setDefaultCluster } = useCluster();
   const { toast } = useToast();
 
   const [dashboard, setDashboard] = useState<ClusterDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rollingDeployments, setRollingDeployments] = useState<Deployment[]>([]);
+  const [allDeployments, setAllDeployments] = useState<Deployment[]>([]);
 
   const fetchDashboard = useCallback(async () => {
     if (!selectedCluster) return;
     try {
       setLoading(true);
-      const data = await clusterApi.getDashboard(selectedCluster);
+      const data = await clusterApi.getDashboard(selectedCluster, selectedNamespace || undefined);
       setDashboard(data);
     } catch (err) {
       setDashboard(null);
@@ -117,11 +120,32 @@ export function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCluster, toast]);
+  }, [selectedCluster, selectedNamespace, toast]);
 
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  // 轮询 Deployment 滚动更新状态，每 5s 刷新一次
+  useEffect(() => {
+    if (!selectedCluster || !selectedNamespace) return;
+
+    const fetchDeployments = async () => {
+      try {
+        const list = await deploymentApi.list(selectedCluster, selectedNamespace);
+        setAllDeployments(list);
+        setRollingDeployments(
+          list.filter(d => d.updated_replicas < d.replicas)
+        );
+      } catch {
+        // 静默失败，不影响主 dashboard
+      }
+    };
+
+    fetchDeployments();
+    const interval = setInterval(fetchDeployments, 5000);
+    return () => clearInterval(interval);
+  }, [selectedCluster, selectedNamespace]);
 
   const clusterInfo = clusters.find((c) => c.name === selectedCluster);
 
@@ -400,6 +424,72 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Rolling Updates */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <RotateCw className={cn('w-4 h-4', rollingDeployments.length > 0 && 'animate-spin text-blue-500')} />
+            滚动更新状态
+            {rollingDeployments.length > 0 && (
+              <Badge variant="outline" className="ml-auto text-blue-500 border-blue-500 animate-pulse">
+                {rollingDeployments.length} 滚动中
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {allDeployments.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">暂无 Deployment 数据</p>
+          ) : rollingDeployments.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-green-600 py-2">
+              <CheckCircle2 className="w-4 h-4" />
+              所有 Deployment 均已更新完成
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rollingDeployments.map(d => {
+                const updatedPct = d.replicas > 0 ? (d.updated_replicas / d.replicas) * 100 : 0;
+                const readyPct = d.replicas > 0 ? (d.ready_replicas / d.replicas) * 100 : 0;
+                return (
+                  <div key={`${d.namespace}/${d.name}`} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{d.name}</span>
+                      <span className="text-xs text-muted-foreground">{d.namespace}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>UP-TO-DATE</span>
+                          <span className="font-mono font-medium text-foreground">{d.updated_replicas}/{d.replicas}</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all duration-500', updatedPct === 100 ? 'bg-green-500' : 'bg-blue-500')}
+                            style={{ width: `${updatedPct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>READY</span>
+                          <span className="font-mono font-medium text-foreground">{d.ready_replicas}/{d.replicas}</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all duration-500', readyPct === 100 ? 'bg-green-500' : 'bg-yellow-500')}
+                            style={{ width: `${readyPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

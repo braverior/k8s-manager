@@ -182,8 +182,10 @@ export const clusterApi = {
   getNamespaces: (cluster: string) =>
     clusterFetch<Namespace[]>(cluster, `/clusters/${cluster}/namespaces`),
 
-  getDashboard: (cluster: string) =>
-    clusterFetch<ClusterDashboard>(cluster, `/clusters/${cluster}/dashboard`),
+  getDashboard: (cluster: string, namespace?: string) => {
+    const query = namespace ? `?namespace=${encodeURIComponent(namespace)}` : '';
+    return clusterFetch<ClusterDashboard>(cluster, `/clusters/${cluster}/dashboard${query}`);
+  },
 };
 
 // Node APIs
@@ -226,6 +228,32 @@ export const configMapApi = {
 
   delete: (cluster: string, namespace: string, name: string) =>
     clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/configmaps/${name}`, {
+      method: 'DELETE',
+    }),
+};
+
+// Service APIs
+export const serviceApi = {
+  list: (cluster: string, namespace: string) =>
+    clusterFetch<K8sResource[]>(cluster, `/clusters/${cluster}/namespaces/${namespace}/services`),
+
+  get: (cluster: string, namespace: string, name: string) =>
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/services/${name}`),
+
+  create: (cluster: string, namespace: string, data: ResourceRequest) =>
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/services`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (cluster: string, namespace: string, name: string, data: ResourceRequest) =>
+    clusterFetch<K8sResource>(cluster, `/clusters/${cluster}/namespaces/${namespace}/services/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (cluster: string, namespace: string, name: string) =>
+    clusterFetch<void>(cluster, `/clusters/${cluster}/namespaces/${namespace}/services/${name}`, {
       method: 'DELETE',
     }),
 };

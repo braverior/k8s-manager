@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/spinner';
+import { AlertCircle } from 'lucide-react';
+import { validateKubeconfigYaml } from '@/lib/yaml-validator';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -41,6 +43,7 @@ export function ClustersPage() {
   const [addName, setAddName] = useState('');
   const [addDescription, setAddDescription] = useState('');
   const [addKubeconfig, setAddKubeconfig] = useState('');
+  const [addKubeconfigError, setAddKubeconfigError] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [testingNew, setTestingNew] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export function ClustersPage() {
   const [editCluster, setEditCluster] = useState<ClusterDetail | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editKubeconfig, setEditKubeconfig] = useState('');
+  const [editKubeconfigError, setEditKubeconfigError] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,6 +109,11 @@ export function ClustersPage() {
       toast({ title: 'Error', description: 'Name and kubeconfig are required', variant: 'destructive' });
       return;
     }
+    const validation = validateKubeconfigYaml(addKubeconfig);
+    if (!validation.valid) {
+      setAddKubeconfigError(validation.error);
+      return;
+    }
     setAdding(true);
     try {
       await clusterManageApi.add({
@@ -130,6 +139,13 @@ export function ClustersPage() {
 
   const handleEdit = async () => {
     if (!editCluster) return;
+    if (editKubeconfig.trim()) {
+      const validation = validateKubeconfigYaml(editKubeconfig);
+      if (!validation.valid) {
+        setEditKubeconfigError(validation.error);
+        return;
+      }
+    }
     setEditing(true);
     try {
       const req: { description?: string; kubeconfig?: string } = {};
@@ -179,15 +195,38 @@ export function ClustersPage() {
     setAddName('');
     setAddDescription('');
     setAddKubeconfig('');
+    setAddKubeconfigError(undefined);
     setTestResult(null);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (v: string) => void) => {
+  const handleAddKubeconfigChange = (value: string) => {
+    setAddKubeconfig(value);
+    if (value.trim()) {
+      const result = validateKubeconfigYaml(value);
+      setAddKubeconfigError(result.valid ? undefined : result.error);
+    } else {
+      setAddKubeconfigError(undefined);
+    }
+  };
+
+  const handleEditKubeconfigChange = (value: string) => {
+    setEditKubeconfig(value);
+    if (value.trim()) {
+      const result = validateKubeconfigYaml(value);
+      setEditKubeconfigError(result.valid ? undefined : result.error);
+    } else {
+      setEditKubeconfigError(undefined);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (v: string) => void, validator?: (v: string) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setter(ev.target?.result as string);
+      const content = ev.target?.result as string;
+      setter(content);
+      if (validator) validator(content);
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -197,6 +236,7 @@ export function ClustersPage() {
     setEditCluster(cluster);
     setEditDescription(cluster.description);
     setEditKubeconfig('');
+    setEditKubeconfigError(undefined);
     setEditDialogOpen(true);
   };
 
@@ -356,16 +396,25 @@ export function ClustersPage() {
                   type="file"
                   accept=".yaml,.yml,.conf,.config,-config"
                   className="hidden"
-                  onChange={(e) => handleFileUpload(e, setAddKubeconfig)}
+                  onChange={(e) => handleFileUpload(e, setAddKubeconfig, (v) => {
+                    const r = validateKubeconfigYaml(v);
+                    setAddKubeconfigError(r.valid ? undefined : r.error);
+                  })}
                 />
               </div>
               <Textarea
                 placeholder="Paste kubeconfig content here..."
                 value={addKubeconfig}
-                onChange={(e) => setAddKubeconfig(e.target.value)}
+                onChange={(e) => handleAddKubeconfigChange(e.target.value)}
                 rows={10}
-                className="font-mono text-xs"
+                className={`font-mono text-xs ${addKubeconfigError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
+              {addKubeconfigError && (
+                <div className="flex items-start gap-1.5 text-destructive text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{addKubeconfigError}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -433,16 +482,25 @@ export function ClustersPage() {
                   type="file"
                   accept=".yaml,.yml,.conf,.config,-config"
                   className="hidden"
-                  onChange={(e) => handleFileUpload(e, setEditKubeconfig)}
+                  onChange={(e) => handleFileUpload(e, setEditKubeconfig, (v) => {
+                    const r = validateKubeconfigYaml(v);
+                    setEditKubeconfigError(r.valid ? undefined : r.error);
+                  })}
                 />
               </div>
               <Textarea
                 placeholder="Paste new kubeconfig to update..."
                 value={editKubeconfig}
-                onChange={(e) => setEditKubeconfig(e.target.value)}
+                onChange={(e) => handleEditKubeconfigChange(e.target.value)}
                 rows={10}
-                className="font-mono text-xs"
+                className={`font-mono text-xs ${editKubeconfigError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
+              {editKubeconfigError && (
+                <div className="flex items-start gap-1.5 text-destructive text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{editKubeconfigError}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -450,7 +508,7 @@ export function ClustersPage() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEdit} disabled={editing}>
+            <Button onClick={handleEdit} disabled={editing || !!editKubeconfigError}>
               {editing ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>

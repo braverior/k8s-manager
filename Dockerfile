@@ -6,9 +6,11 @@
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
+COPY version.sh ./
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+RUN npm ci --registry=https://registry.npmmirror.com
 COPY frontend/ ./
+RUN sh -c '. ./version.sh && npm pkg set version="$VERSION"'
 RUN npm run build
 
 # Stage 2: Build backend

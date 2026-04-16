@@ -8,9 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loading } from '@/components/ui/spinner';
+import { Loading, Spinner } from '@/components/ui/spinner';
 import { YamlEditorDialog } from '@/components/YamlEditorDialog';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Deployment } from '@/types';
 import {
   Plus,
@@ -89,9 +97,11 @@ export function DeploymentsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [selectedResource, setSelectedResource] = useState<Deployment | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   const fetchDeployments = useCallback(async () => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -114,6 +124,20 @@ export function DeploymentsPage() {
   useEffect(() => {
     fetchDeployments();
   }, [fetchDeployments]);
+
+  // 每 5s 静默轮询，自动感知滚动更新状态
+  useEffect(() => {
+    if (!selectedCluster || !selectedNamespace) return;
+    const interval = setInterval(async () => {
+      try {
+        const data = await deploymentApi.list(selectedCluster, selectedNamespace);
+        setDeployments(data || []);
+      } catch {
+        // 静默失败
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedCluster, selectedNamespace]);
 
   const handleCreate = async (yaml: string) => {
     try {
@@ -171,10 +195,13 @@ export function DeploymentsPage() {
     }
   };
 
-  const handleRestart = async (deployment: Deployment) => {
+  const handleRestart = async () => {
+    if (!selectedResource) return;
     try {
-      await deploymentApi.restart(selectedCluster, selectedNamespace, deployment.name);
-      toast({ title: 'Success', description: `Deployment "${deployment.name}" restarting` });
+      setRestarting(true);
+      await deploymentApi.restart(selectedCluster, selectedNamespace, selectedResource.name);
+      toast({ title: 'Success', description: `Deployment "${selectedResource.name}" restarting` });
+      setRestartDialogOpen(false);
       fetchDeployments();
     } catch (err) {
       toast({
@@ -182,6 +209,8 @@ export function DeploymentsPage() {
         description: err instanceof Error ? err.message : 'Failed to restart Deployment',
         variant: 'destructive',
       });
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -252,7 +281,10 @@ export function DeploymentsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredDeployments.map((deployment) => {
             const info = parseDeploymentYaml(deployment.yaml);
-            const isHealthy = deployment.ready_replicas === deployment.replicas;
+            const isRolling = deployment.updated_replicas < deployment.replicas;
+            const isHealthy = !isRolling && deployment.ready_replicas === deployment.replicas;
+            const updatedPct = deployment.replicas > 0 ? (deployment.updated_replicas / deployment.replicas) * 100 : 0;
+            const readyPct = deployment.replicas > 0 ? (deployment.ready_replicas / deployment.replicas) * 100 : 0;
             return (
               <Card
                 key={deployment.name}
@@ -267,6 +299,9 @@ export function DeploymentsPage() {
                     <div className="flex items-center gap-2 truncate">
                       <Box className="w-4 h-4 text-primary shrink-0" />
                       <span className="truncate">{deployment.name}</span>
+                      {isRolling && (
+                        <RotateCw className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+                      )}
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
@@ -300,7 +335,8 @@ export function DeploymentsPage() {
                         title="Restart Deployment"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRestart(deployment);
+                          setSelectedResource(deployment);
+                          setRestartDialogOpen(true);
                         }}
                       >
                         <RotateCw className="w-4 h-4" />
@@ -335,31 +371,87 @@ export function DeploymentsPage() {
                       </Badge>
                     </div>
 
-                    {/* Pod Count - Clickable */}
+                    {/* Rolling Update Progress */}
+                    {isRolling && (
+                      <div className="border-t pt-2 space-y-1.5">
+                        <div className="flex items-center gap-1 text-xs text-blue-500 font-medium mb-1">
+                          <RotateCw className="w-3 h-3 animate-spin" />
+                          滚动更新中
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>UP-TO-DATE</span>
+                            <span className="font-mono font-medium text-foreground">{deployment.updated_replicas}/{deployment.replicas}</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                              style={{ width: `${updatedPct}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>READY</span>
+                            <span className="font-mono font-medium text-foreground">{deployment.ready_replicas}/{deployment.replicas}</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                              style={{ width: `${readyPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pod Count - Clickable with status breakdown */}
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground flex items-center gap-1.5">
                         <Container className="w-3.5 h-3.5" />
                         Pods
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-primary hover:text-primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/pods?deployment=${encodeURIComponent(deployment.name)}`);
-                        }}
-                      >
-                        {deployment.pod_count}
-                        <ExternalLink className="w-3 h-3 ml-1" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {deployment.pod_status_counts && Object.entries(deployment.pod_status_counts)
+                          .filter(([, count]) => count > 0)
+                          .map(([status, count]) => (
+                            <span
+                              key={status}
+                              className="flex items-center gap-0.5 text-xs font-medium"
+                              title={status}
+                            >
+                              <span className={`inline-block w-2 h-2 rounded-full ${
+                                status === 'Running' ? 'bg-green-500' :
+                                status === 'Succeeded' ? 'bg-blue-400' :
+                                status === 'Pending' ? 'bg-yellow-500' :
+                                status === 'Failed' ? 'bg-red-500' :
+                                'bg-gray-400'
+                              }`} />
+                              {count}
+                            </span>
+                          ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1 text-primary hover:text-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/pods?deployment=${encodeURIComponent(deployment.name)}`);
+                          }}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Image */}
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Image</span>
-                      <span className="font-mono text-xs truncate max-w-[150px]" title={info.image}>
-                        {info.image}
+                    <div className="flex items-start justify-between text-sm gap-2">
+                      <span className="text-muted-foreground shrink-0 flex items-center gap-1.5">
+                        <Container className="w-3.5 h-3.5" />
+                        Image
+                      </span>
+                      <span className="font-mono text-xs text-right break-all" title={info.image}>
+                        {info.image.includes('/') ? info.image.split('/').pop() : info.image}
                       </span>
                     </div>
 
@@ -431,6 +523,36 @@ export function DeploymentsPage() {
         onConfirm={handleDelete}
         deleting={deleting}
       />
+
+      {/* Restart Confirm Dialog */}
+      <Dialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCw className="w-5 h-5" />
+              重启 Deployment
+            </DialogTitle>
+            <DialogDescription>
+              此操作将触发滚动重启，所有 Pod 将依次重建。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">即将重启：</p>
+            <p className="mt-2 font-mono text-sm bg-muted px-3 py-2 rounded-md">
+              {selectedResource?.name || ''}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestartDialogOpen(false)} disabled={restarting}>
+              取消
+            </Button>
+            <Button onClick={handleRestart} disabled={restarting}>
+              {restarting && <Spinner size="sm" className="mr-2" />}
+              {restarting ? '重启中...' : '确认重启'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

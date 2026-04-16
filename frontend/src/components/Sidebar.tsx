@@ -30,6 +30,7 @@ import {
   LogOut,
   ShieldCheck,
   Gauge,
+  Network,
   Mail,
   Building2,
   Hash,
@@ -44,6 +45,7 @@ const navItems = [
   { path: '/nodes', label: 'Nodes', icon: Server },
   { path: '/configmaps', label: 'ConfigMaps', icon: Settings },
   { path: '/deployments', label: 'Deployments', icon: Box },
+  { path: '/services', label: 'Services', icon: Network },
   { path: '/pods', label: 'Pods', icon: Container },
   { path: '/hpas', label: 'HPAs', icon: Gauge },
   { path: '/history', label: 'History', icon: History },
@@ -243,7 +245,7 @@ export function Sidebar() {
                         {user.is_admin ? 'Admin' : 'User'}
                       </span>
                       <span className="text-[10px] text-muted-foreground/50">·</span>
-                      <span className="text-[10px] text-muted-foreground/50">v1.0.0</span>
+                      <span className="text-[10px] text-muted-foreground/50">v{__APP_VERSION__}</span>
                     </div>
                   </div>
                 </div>
@@ -339,7 +341,7 @@ export function Sidebar() {
 
               {/* Version */}
               <div className="px-3 pb-2 text-center">
-                <span className="text-[10px] text-muted-foreground/50">K8S Manager v1.0.0</span>
+                <span className="text-[10px] text-muted-foreground/50">K8S Manager v{__APP_VERSION__}</span>
               </div>
             </PopoverContent>
           </Popover>
