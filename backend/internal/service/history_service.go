@@ -43,7 +43,7 @@ func (s *HistoryService) List(ctx context.Context, clusterName, namespace string
 		return nil, 0, apperrors.Wrap(err, 500, 500, "获取历史记录失败")
 	}
 
-	var responses []dto.HistoryResponse
+	responses := make([]dto.HistoryResponse, 0, len(histories))
 	for _, h := range histories {
 		responses = append(responses, dto.HistoryResponse{
 			ID:           h.ID,

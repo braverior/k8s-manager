@@ -76,7 +76,7 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 		}
 	}
 
-	var responses []dto.DeploymentResponse
+	responses := make([]dto.DeploymentResponse, 0, len(deployments))
 	for _, d := range deployments {
 		yamlContent, err := utils.EncodeToYAML(&d, "apps/v1", "Deployment")
 		if err != nil {

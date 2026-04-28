@@ -260,7 +260,7 @@ func (s *PodService) GetEvents(ctx context.Context, clusterName, namespace, name
 }
 
 func (s *PodService) toResponses(pods []corev1.Pod, metricsMap map[string]*operator.PodMetrics) []dto.PodResponse {
-	var responses []dto.PodResponse
+	responses := make([]dto.PodResponse, 0, len(pods))
 	for _, pod := range pods {
 		responses = append(responses, *s.toResponse(&pod, metricsMap[pod.Name]))
 	}

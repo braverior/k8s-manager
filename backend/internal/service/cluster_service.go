@@ -24,7 +24,7 @@ func NewClusterService(clientManager *k8s.ClientManager) *ClusterService {
 func (s *ClusterService) List(ctx context.Context) ([]dto.ClusterResponse, error) {
 	clusters := s.clientManager.ListClusters()
 
-	var responses []dto.ClusterResponse
+	responses := make([]dto.ClusterResponse, 0, len(clusters))
 	for _, c := range clusters {
 		responses = append(responses, dto.ClusterResponse{
 			Name:        c.Name,

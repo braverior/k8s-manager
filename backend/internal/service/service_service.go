@@ -38,7 +38,7 @@ func (s *ServiceService) List(ctx context.Context, clusterName, namespace string
 		return nil, apperrors.Wrap(err, 500, 500, "获取 Service 列表失败")
 	}
 
-	var responses []dto.ResourceYAMLResponse
+	responses := make([]dto.ResourceYAMLResponse, 0, len(services))
 	for _, svc := range services {
 		yamlContent, err := utils.EncodeToYAML(&svc, "v1", "Service")
 		if err != nil {

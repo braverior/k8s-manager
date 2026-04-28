@@ -38,7 +38,7 @@ func (s *ConfigMapService) List(ctx context.Context, clusterName, namespace stri
 		return nil, apperrors.Wrap(err, 500, 500, "获取 ConfigMap 列表失败")
 	}
 
-	var responses []dto.ResourceYAMLResponse
+	responses := make([]dto.ResourceYAMLResponse, 0, len(cms))
 	for _, cm := range cms {
 		yamlContent, err := utils.EncodeToYAML(&cm, "v1", "ConfigMap")
 		if err != nil {

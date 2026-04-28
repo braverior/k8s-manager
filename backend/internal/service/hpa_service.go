@@ -38,7 +38,7 @@ func (s *HPAService) List(ctx context.Context, clusterName, namespace string) ([
 		return nil, apperrors.Wrap(err, 500, 500, "获取 HPA 列表失败: "+err.Error())
 	}
 
-	var responses []dto.HPAResponse
+	responses := make([]dto.HPAResponse, 0, len(hpas))
 	for _, hpa := range hpas {
 		yamlContent, err := utils.EncodeToYAML(&hpa, "autoscaling/v2", "HorizontalPodAutoscaler")
 		if err != nil {
