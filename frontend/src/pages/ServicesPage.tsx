@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { K8sResource } from '@/types';
+import { ApiError } from '@/api';
 import {
   Plus,
   Search,
@@ -150,14 +151,20 @@ export function ServicesPage() {
     if (!selectedResource) return;
     try {
       setSaving(true);
-      await serviceApi.update(selectedCluster, selectedNamespace, selectedResource.name, { yaml });
+      await serviceApi.update(selectedCluster, selectedNamespace, selectedResource.name, {
+        yaml,
+        resourceVersion: selectedResource.resourceVersion,
+      });
       toast({ title: 'Success', description: 'Service updated successfully' });
       setEditDialogOpen(false);
       fetchServices();
     } catch (err) {
+      const isConflict = err instanceof ApiError && err.status === 409;
       toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to update Service',
+        title: isConflict ? '版本冲突' : 'Error',
+        description: isConflict
+          ? '资源已被其他用户修改，请关闭编辑器后重新打开获取最新版本'
+          : err instanceof Error ? err.message : 'Failed to update Service',
         variant: 'destructive',
       });
     } finally {

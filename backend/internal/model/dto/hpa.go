@@ -26,6 +26,8 @@ type HPAResponse struct {
 	Conditions []HPACondition `json:"conditions,omitempty"`
 	// 完整的 YAML 内容
 	YAML string `json:"yaml"`
+	// K8s resourceVersion，前端编辑后回传用于冲突检测
+	ResourceVersion string `json:"resourceVersion,omitempty"`
 }
 
 // HPAResourceMetric HPA 资源指标（CPU/内存）

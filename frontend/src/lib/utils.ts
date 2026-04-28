@@ -7,6 +7,30 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * 将 Pod 的展示状态归类为 healthy / pending / error / unknown。
+ * 与后端 classifyPodStatus 保持一致。
+ */
+export type PodStatusCategory = 'healthy' | 'pending' | 'error' | 'unknown';
+
+export function classifyPhase(phase: string): PodStatusCategory {
+  if (phase === 'Running' || phase === 'Succeeded') return 'healthy';
+  if (
+    phase === 'Pending' ||
+    phase === 'ContainerCreating' ||
+    phase === 'PodInitializing' ||
+    phase === 'Terminating' ||
+    phase.startsWith('Init:')
+  ) return 'pending';
+  if ([
+    'Failed', 'Error', 'CrashLoopBackOff', 'OOMKilled',
+    'ImagePullBackOff', 'ErrImagePull',
+    'CreateContainerError', 'CreateContainerConfigError',
+    'InvalidImageName',
+  ].includes(phase)) return 'error';
+  return 'unknown';
+}
+
+/**
  * Format ConfigMap YAML for display:
  * 1. Remove kubectl.kubernetes.io/last-applied-configuration annotation
  * 2. Format data values with proper multiline strings

@@ -30,6 +30,14 @@ import type {
 
 const API_PREFIX = '/api/v1';
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 // Get token from localStorage
 function getAuthToken(): string | null {
   return localStorage.getItem('token');
@@ -70,7 +78,7 @@ export async function fetchApi<T>(apiServer: string, url: string, options?: Requ
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    throw new ApiError(error.message || `HTTP ${response.status}`, response.status);
   }
 
   const data: ApiResponse<T> = await response.json();
@@ -294,10 +302,11 @@ export const deploymentApi = {
 
 // Pod APIs
 export const podApi = {
-  list: (cluster: string, namespace: string, params?: { deployment?: string; search?: string; page?: number; page_size?: number }) => {
+  list: (cluster: string, namespace: string, params?: { deployment?: string; search?: string; status?: string; page?: number; page_size?: number }) => {
     const searchParams = new URLSearchParams();
     if (params?.deployment) searchParams.set('deployment', params.deployment);
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.status) searchParams.set('status', params.status);
     if (params?.page) searchParams.set('page', params.page.toString());
     if (params?.page_size) searchParams.set('page_size', params.page_size.toString());
     const query = searchParams.toString();

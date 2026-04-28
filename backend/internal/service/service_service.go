@@ -45,9 +45,10 @@ func (s *ServiceService) List(ctx context.Context, clusterName, namespace string
 			return nil, apperrors.Wrap(err, 500, 500, "转换 YAML 失败")
 		}
 		responses = append(responses, dto.ResourceYAMLResponse{
-			Name:      svc.Name,
-			Namespace: svc.Namespace,
-			YAML:      yamlContent,
+			Name:            svc.Name,
+			Namespace:       svc.Namespace,
+			YAML:            yamlContent,
+			ResourceVersion: svc.ResourceVersion,
 		})
 	}
 	return responses, nil
@@ -71,9 +72,10 @@ func (s *ServiceService) Get(ctx context.Context, clusterName, namespace, name s
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      svc.Name,
-		Namespace: svc.Namespace,
-		YAML:      yamlContent,
+		Name:            svc.Name,
+		Namespace:       svc.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: svc.ResourceVersion,
 	}, nil
 }
 
@@ -109,6 +111,9 @@ func (s *ServiceService) Apply(ctx context.Context, clusterName, namespace strin
 		if err != nil {
 			return nil, apperrors.Wrap(err, 500, 500, "获取现有 Service 失败")
 		}
+		if req.ResourceVersion != "" && req.ResourceVersion != existing.ResourceVersion {
+			return nil, apperrors.New(409, 409, "资源已被其他用户修改，请刷新后重试")
+		}
 		svc.ResourceVersion = existing.ResourceVersion
 		svc.Spec.ClusterIP = existing.Spec.ClusterIP // 保留 ClusterIP
 		result, err = op.Update(ctx, namespace, svc)
@@ -132,9 +137,10 @@ func (s *ServiceService) Apply(ctx context.Context, clusterName, namespace strin
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      result.Name,
-		Namespace: result.Namespace,
-		YAML:      yamlContent,
+		Name:            result.Name,
+		Namespace:       result.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: result.ResourceVersion,
 	}, nil
 }
 

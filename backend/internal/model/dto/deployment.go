@@ -20,4 +20,6 @@ type DeploymentResponse struct {
 	PodStatusCounts map[string]int `json:"pod_status_counts"`
 	// YAML 内容
 	YAML string `json:"yaml"`
+	// K8s resourceVersion，前端编辑后回传用于冲突检测
+	ResourceVersion string `json:"resourceVersion,omitempty"`
 }

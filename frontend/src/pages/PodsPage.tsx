@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loading } from '@/components/ui/spinner';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { PodTerminalDialog } from '@/components/PodTerminalDialog';
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Pod, PodLogResponse, PodEvent, Deployment, PaginatedResponse } from '@/types';
+import { classifyPhase } from '@/lib/utils';
 import {
   Search,
   RefreshCw,
@@ -58,6 +60,7 @@ export function PodsPage() {
   const [pods, setPods] = useState<Pod[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(true);
@@ -95,6 +98,7 @@ export function PodsPage() {
         // Paginated path
         const data = await podApi.list(selectedCluster, selectedNamespace, {
           search: searchTerm || undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
           page,
           page_size: PAGE_SIZE,
         }) as PaginatedResponse<Pod>;
@@ -112,17 +116,22 @@ export function PodsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCluster, selectedNamespace, deploymentFilter, searchTerm, page, toast]);
+  }, [selectedCluster, selectedNamespace, deploymentFilter, searchTerm, statusFilter, page, toast]);
 
   useEffect(() => {
     fetchPods();
   }, [fetchPods]);
 
-  // Reset page on cluster/namespace/deployment change
+  // Reset page on cluster/namespace/deployment/status change
   useEffect(() => {
     setPage(1);
     setSearchTerm('');
+    setStatusFilter('all');
   }, [selectedCluster, selectedNamespace, deploymentFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   const fetchDeployments = useCallback(async () => {
     if (!selectedCluster || !selectedNamespace) return;
@@ -150,6 +159,11 @@ export function PodsPage() {
     searchParams.set('deployment', name);
     setSearchParams(searchParams);
   };
+
+  // 在 deployment filter 模式下后端不支持 status 查询，这里做本地过滤
+  const displayedPods = deploymentFilter && statusFilter !== 'all'
+    ? pods.filter((p) => classifyPhase(p.phase) === statusFilter)
+    : pods;
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
@@ -234,14 +248,26 @@ export function PodsPage() {
   };
 
   const getPhaseVariant = (phase: string) => {
+    if (phase.startsWith('Init:')) return 'warning';
     switch (phase) {
       case 'Running':
         return 'success';
       case 'Succeeded':
-        return 'secondary';
+        return 'info';
       case 'Pending':
+      case 'ContainerCreating':
+      case 'PodInitializing':
+      case 'Terminating':
         return 'warning';
       case 'Failed':
+      case 'Error':
+      case 'OOMKilled':
+      case 'CrashLoopBackOff':
+      case 'ImagePullBackOff':
+      case 'ErrImagePull':
+      case 'CreateContainerError':
+      case 'CreateContainerConfigError':
+      case 'InvalidImageName':
         return 'destructive';
       default:
         return 'outline';
@@ -249,11 +275,28 @@ export function PodsPage() {
   };
 
   const getPhaseIcon = (phase: string) => {
+    if (phase.startsWith('Init:')) return <RotateCcw className="w-3 h-3" />;
     switch (phase) {
       case 'Running':
         return <Activity className="w-3 h-3" />;
+      case 'Succeeded':
+        return <CheckCircle2 className="w-3 h-3" />;
       case 'Pending':
+      case 'Terminating':
         return <Clock className="w-3 h-3" />;
+      case 'ContainerCreating':
+      case 'PodInitializing':
+        return <RotateCcw className="w-3 h-3" />;
+      case 'Failed':
+      case 'Error':
+      case 'OOMKilled':
+      case 'CrashLoopBackOff':
+      case 'ImagePullBackOff':
+      case 'ErrImagePull':
+      case 'CreateContainerError':
+      case 'CreateContainerConfigError':
+      case 'InvalidImageName':
+        return <AlertTriangle className="w-3 h-3" />;
       default:
         return <CircleDot className="w-3 h-3" />;
     }
@@ -270,6 +313,87 @@ export function PodsPage() {
     if (diffDays > 0) return `${diffDays}d`;
     if (diffHours > 0) return `${diffHours}h`;
     return `${diffMins}m`;
+  };
+
+  const formatMillis = (m: number) => {
+    if (m >= 1000) {
+      const cores = m / 1000;
+      return Number.isInteger(cores) ? `${cores}` : cores.toFixed(2);
+    }
+    return `${m}m`;
+  };
+
+  const formatBytes = (b: number) => {
+    const mi = b / (1024 * 1024);
+    if (mi >= 1024) return `${(mi / 1024).toFixed(1)}Gi`;
+    return `${Math.round(mi)}Mi`;
+  };
+
+  const usageBarColor = (pct: number) =>
+    pct >= 90 ? 'bg-red-500' : pct >= 75 ? 'bg-yellow-500' : 'bg-green-500';
+
+  const renderUsageRow = (
+    label: string,
+    Icon: typeof Cpu,
+    used: number,
+    limit: number,
+    hasLimit: boolean,
+    formatter: (n: number) => string,
+    hasMetrics: boolean,
+  ) => {
+    if (!hasMetrics) {
+      return (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground flex items-center gap-1">
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </span>
+          <span className="text-muted-foreground">-</span>
+        </div>
+      );
+    }
+
+    if (hasLimit && limit > 0) {
+      const pct = Math.min(100, (used / limit) * 100);
+      return (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground flex items-center gap-1">
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </span>
+            <span className="font-mono text-xs">
+              {formatter(used)} / {formatter(limit)}
+              <span className="text-muted-foreground ml-1">({pct.toFixed(0)}%)</span>
+            </span>
+          </div>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${usageBarColor(pct)}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground flex items-center gap-1">
+          <Icon className="w-3.5 h-3.5" />
+          {label}
+        </span>
+        <span className="font-mono text-xs">
+          {formatter(used)}
+          <span
+            className="text-muted-foreground ml-1"
+            title="部分或全部容器未设置 limit，无法计算占用率"
+          >
+            · 无limit
+          </span>
+        </span>
+      </div>
+    );
   };
 
   if (!selectedCluster || !selectedNamespace) {
@@ -295,7 +419,7 @@ export function PodsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-sm">
-            {total} pods
+            {deploymentFilter && statusFilter !== 'all' ? displayedPods.length : total} pods
           </Badge>
         </div>
       </div>
@@ -311,16 +435,24 @@ export function PodsPage() {
           >
             全部({deployments.reduce((sum, d) => sum + d.pod_count, 0)})
           </Badge>
-          {deployments.map((dep) => (
-            <Badge
-              key={dep.name}
-              variant={deploymentFilter === dep.name ? 'default' : 'outline'}
-              className="cursor-pointer hover:opacity-80"
-              onClick={() => setDeploymentFilterParam(dep.name)}
-            >
-              {dep.name}({dep.pod_count})
-            </Badge>
-          ))}
+          {[...deployments]
+            .sort((a, b) => {
+              // 有 pod 的排前面，0 pod 的排后面；同组内按名字升序
+              if ((a.pod_count > 0) !== (b.pod_count > 0)) {
+                return a.pod_count > 0 ? -1 : 1;
+              }
+              return a.name.localeCompare(b.name);
+            })
+            .map((dep) => (
+              <Badge
+                key={dep.name}
+                variant={deploymentFilter === dep.name ? 'default' : 'outline'}
+                className={`cursor-pointer hover:opacity-80 ${dep.pod_count === 0 ? 'opacity-60' : ''}`}
+                onClick={() => setDeploymentFilterParam(dep.name)}
+              >
+                {dep.name}({dep.pod_count})
+              </Badge>
+            ))}
         </div>
       )}
 
@@ -335,6 +467,17 @@ export function PodsPage() {
             className="pl-9"
           />
         </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部状态</SelectItem>
+            <SelectItem value="healthy">🟢 健康</SelectItem>
+            <SelectItem value="pending">🟡 进行中</SelectItem>
+            <SelectItem value="error">🔴 异常</SelectItem>
+          </SelectContent>
+        </Select>
         <div className="flex items-center border rounded-md">
           <Button
             variant={viewMode === 'card' ? 'secondary' : 'ghost'}
@@ -361,18 +504,18 @@ export function PodsPage() {
       {/* Pod List */}
       {loading ? (
         <Loading text="Loading Pods..." />
-      ) : pods.length === 0 ? (
+      ) : displayedPods.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Container className="w-12 h-12 text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">
-              {searchTerm ? 'No Pods found matching your search' : 'No Pods in this namespace'}
+              {searchTerm || statusFilter !== 'all' ? 'No Pods found matching your filters' : 'No Pods in this namespace'}
             </p>
           </CardContent>
         </Card>
       ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {pods.map((pod) => (
+          {displayedPods.map((pod) => (
             <Card
               key={pod.name}
               className="group hover:border-primary/50 transition-colors cursor-pointer"
@@ -397,6 +540,28 @@ export function PodsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
+                  {/* CPU Usage */}
+                  {renderUsageRow(
+                    'CPU',
+                    Cpu,
+                    pod.metrics?.cpu_millis ?? 0,
+                    pod.metrics?.cpu_limit_millis ?? 0,
+                    !!pod.metrics?.has_cpu_limit,
+                    formatMillis,
+                    !!pod.metrics,
+                  )}
+
+                  {/* Memory Usage */}
+                  {renderUsageRow(
+                    'MEM',
+                    HardDrive,
+                    pod.metrics?.memory_bytes ?? 0,
+                    pod.metrics?.memory_limit_bytes ?? 0,
+                    !!pod.metrics?.has_memory_limit,
+                    formatBytes,
+                    !!pod.metrics,
+                  )}
+
                   {/* Ready Status */}
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Ready</span>
@@ -507,7 +672,7 @@ export function PodsPage() {
                 </tr>
               </thead>
               <tbody>
-                {pods.map((pod) => (
+                {displayedPods.map((pod) => (
                   <tr
                     key={pod.name}
                     className="border-b border-border hover:bg-muted/50 transition-colors cursor-pointer"

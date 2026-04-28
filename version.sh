@@ -1,1 +1,1 @@
-export VERSION="1.4.0"
+export VERSION="1.4.4"

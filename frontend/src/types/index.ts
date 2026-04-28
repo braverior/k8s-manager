@@ -110,6 +110,7 @@ export interface K8sResource {
   name: string;
   namespace: string;
   yaml: string;
+  resourceVersion?: string;
 }
 
 // Deployment Type (extends K8sResource with status fields)
@@ -125,6 +126,7 @@ export interface Deployment extends K8sResource {
 export interface ResourceRequest {
   yaml?: string;
   content?: string;
+  resourceVersion?: string;
 }
 
 // History Types
@@ -170,6 +172,10 @@ export interface PodContainer {
   last_state?: string;
   last_reason?: string;
   last_message?: string;
+  cpu_request?: string;
+  cpu_limit?: string;
+  memory_request?: string;
+  memory_limit?: string;
 }
 
 export interface PodContainerMetrics {
@@ -180,6 +186,12 @@ export interface PodContainerMetrics {
 
 export interface PodMetrics {
   containers: PodContainerMetrics[];
+  cpu_millis: number;
+  memory_bytes: number;
+  cpu_limit_millis: number;
+  memory_limit_bytes: number;
+  has_cpu_limit: boolean;
+  has_memory_limit: boolean;
 }
 
 export interface PodCondition {
@@ -193,7 +205,7 @@ export interface PodCondition {
 export interface Pod {
   name: string;
   namespace: string;
-  phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
+  phase: string;
   pod_ip: string;
   host_ip: string;
   node_name: string;
@@ -341,6 +353,7 @@ export interface HPA {
   metrics?: HPAMetric[];
   conditions?: HPACondition[];
   yaml: string;
+  resourceVersion?: string;
 }
 
 // Node Types (for Node list API)

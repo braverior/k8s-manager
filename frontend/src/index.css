@@ -28,6 +28,8 @@
     --success-foreground: 210 40% 98%;
     --warning: 38 92% 50%;
     --warning-foreground: 210 40% 98%;
+    --info: 217 91% 60%;
+    --info-foreground: 210 40% 98%;
   }
 
   .dark {
@@ -54,6 +56,8 @@
     --success-foreground: 210 40% 98%;
     --warning: 38 92% 50%;
     --warning-foreground: 222 47% 4%;
+    --info: 217 91% 60%;
+    --info-foreground: 210 40% 98%;
   }
 }
 

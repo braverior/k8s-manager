@@ -20,6 +20,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { Deployment } from '@/types';
+import { ApiError } from '@/api';
+import { classifyPhase } from '@/lib/utils';
+import { useSearchHistory } from '@/hooks/use-search-history';
+import { SearchHistoryChips } from '@/components/SearchHistoryChips';
 import {
   Plus,
   Search,
@@ -91,6 +95,14 @@ export function DeploymentsPage() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory('searchHistory:deployments');
+
+  // 输入停止 1.2s 后自动入库
+  useEffect(() => {
+    if (!searchTerm.trim()) return;
+    const t = setTimeout(() => addHistory(searchTerm), 1200);
+    return () => clearTimeout(t);
+  }, [searchTerm, addHistory]);
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -161,14 +173,20 @@ export function DeploymentsPage() {
     if (!selectedResource) return;
     try {
       setSaving(true);
-      await deploymentApi.update(selectedCluster, selectedNamespace, selectedResource.name, { yaml });
+      await deploymentApi.update(selectedCluster, selectedNamespace, selectedResource.name, {
+        yaml,
+        resourceVersion: selectedResource.resourceVersion,
+      });
       toast({ title: 'Success', description: 'Deployment updated successfully' });
       setEditDialogOpen(false);
       fetchDeployments();
     } catch (err) {
+      const isConflict = err instanceof ApiError && err.status === 409;
       toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to update Deployment',
+        title: isConflict ? '版本冲突' : 'Error',
+        description: isConflict
+          ? '资源已被其他用户修改，请关闭编辑器后重新打开获取最新版本'
+          : err instanceof Error ? err.message : 'Failed to update Deployment',
         variant: 'destructive',
       });
     } finally {
@@ -253,6 +271,7 @@ export function DeploymentsPage() {
             placeholder="Search Deployments..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && searchTerm.trim()) addHistory(searchTerm); }}
             className="pl-9"
           />
         </div>
@@ -260,6 +279,14 @@ export function DeploymentsPage() {
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
+
+      <SearchHistoryChips
+        history={history}
+        current={searchTerm}
+        onSelect={setSearchTerm}
+        onRemove={removeHistory}
+        onClear={clearHistory}
+      />
 
       {/* Deployment List */}
       {loading ? (
@@ -282,7 +309,12 @@ export function DeploymentsPage() {
           {filteredDeployments.map((deployment) => {
             const info = parseDeploymentYaml(deployment.yaml);
             const isRolling = deployment.updated_replicas < deployment.replicas;
-            const isHealthy = !isRolling && deployment.ready_replicas === deployment.replicas;
+            const errorPodCount = Object.entries(deployment.pod_status_counts || {})
+              .filter(([status]) => classifyPhase(status) === 'error')
+              .reduce((sum, [, count]) => sum + count, 0);
+            const hasError = errorPodCount > 0 || (deployment.replicas > 0 && deployment.ready_replicas === 0);
+            const isHealthy = !isRolling && !hasError && deployment.ready_replicas === deployment.replicas;
+            const replicasVariant = hasError ? 'destructive' : isHealthy ? 'success' : 'warning';
             const updatedPct = deployment.replicas > 0 ? (deployment.updated_replicas / deployment.replicas) * 100 : 0;
             const readyPct = deployment.replicas > 0 ? (deployment.ready_replicas / deployment.replicas) * 100 : 0;
             return (
@@ -366,7 +398,7 @@ export function DeploymentsPage() {
                         <Layers className="w-3.5 h-3.5" />
                         Replicas
                       </span>
-                      <Badge variant={isHealthy ? 'success' : 'warning'}>
+                      <Badge variant={replicasVariant}>
                         {deployment.ready_replicas}/{deployment.replicas}
                       </Badge>
                     </div>
@@ -414,22 +446,24 @@ export function DeploymentsPage() {
                       <div className="flex items-center gap-2">
                         {deployment.pod_status_counts && Object.entries(deployment.pod_status_counts)
                           .filter(([, count]) => count > 0)
-                          .map(([status, count]) => (
-                            <span
-                              key={status}
-                              className="flex items-center gap-0.5 text-xs font-medium"
-                              title={status}
-                            >
-                              <span className={`inline-block w-2 h-2 rounded-full ${
-                                status === 'Running' ? 'bg-green-500' :
-                                status === 'Succeeded' ? 'bg-blue-400' :
-                                status === 'Pending' ? 'bg-yellow-500' :
-                                status === 'Failed' ? 'bg-red-500' :
-                                'bg-gray-400'
-                              }`} />
-                              {count}
-                            </span>
-                          ))}
+                          .map(([status, count]) => {
+                            const category = classifyPhase(status);
+                            const dotClass =
+                              category === 'healthy' ? (status === 'Succeeded' ? 'bg-blue-400' : 'bg-green-500') :
+                              category === 'pending' ? 'bg-yellow-500' :
+                              category === 'error' ? 'bg-red-500' :
+                              'bg-gray-400';
+                            return (
+                              <span
+                                key={status}
+                                className="flex items-center gap-0.5 text-xs font-medium"
+                                title={status}
+                              >
+                                <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
+                                {count}
+                              </span>
+                            );
+                          })}
                         <Button
                           variant="ghost"
                           size="sm"

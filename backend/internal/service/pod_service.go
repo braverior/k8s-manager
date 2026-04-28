@@ -62,6 +62,17 @@ func (s *PodService) List(ctx context.Context, clusterName, namespace string, qu
 		responses = filtered
 	}
 
+	// 状态分类过滤
+	if query != nil && query.Status != "" {
+		filtered := make([]dto.PodResponse, 0)
+		for _, r := range responses {
+			if classifyPodStatus(r.Phase) == query.Status {
+				filtered = append(filtered, r)
+			}
+		}
+		responses = filtered
+	}
+
 	total := int64(len(responses))
 
 	// 分页
@@ -256,11 +267,58 @@ func (s *PodService) toResponses(pods []corev1.Pod, metricsMap map[string]*opera
 	return responses
 }
 
+// classifyPodStatus 将展示状态归类为 healthy / pending / error
+func classifyPodStatus(phase string) string {
+	switch phase {
+	case "Running", "Succeeded":
+		return "healthy"
+	case "Pending", "ContainerCreating", "PodInitializing", "Terminating":
+		return "pending"
+	case "Failed", "Error", "CrashLoopBackOff", "OOMKilled",
+		"ImagePullBackOff", "ErrImagePull",
+		"CreateContainerError", "CreateContainerConfigError",
+		"InvalidImageName":
+		return "error"
+	}
+	if strings.HasPrefix(phase, "Init:") {
+		return "pending"
+	}
+	return "unknown"
+}
+
+// getPodDisplayStatus 推导 Pod 的展示状态，参考 kubectl 的逻辑：
+// 优先级 Terminating > Init 容器 Waiting/Terminated Reason > 容器 Waiting/Terminated Reason > Phase
+func getPodDisplayStatus(pod *corev1.Pod) string {
+	if pod.DeletionTimestamp != nil {
+		return "Terminating"
+	}
+
+	for _, cs := range pod.Status.InitContainerStatuses {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			return "Init:" + cs.State.Waiting.Reason
+		}
+		if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" && cs.State.Terminated.ExitCode != 0 {
+			return "Init:" + cs.State.Terminated.Reason
+		}
+	}
+
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			return cs.State.Waiting.Reason
+		}
+		if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+			return cs.State.Terminated.Reason
+		}
+	}
+
+	return string(pod.Status.Phase)
+}
+
 func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *dto.PodResponse {
 	resp := &dto.PodResponse{
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
-		Phase:     string(pod.Status.Phase),
+		Phase:     getPodDisplayStatus(pod),
 		PodIP:     pod.Status.PodIP,
 		HostIP:    pod.Status.HostIP,
 		NodeName:  pod.Spec.NodeName,
@@ -283,6 +341,34 @@ func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *
 		restartCount += cs.RestartCount
 	}
 	resp.RestartCount = restartCount
+
+	// 按容器名索引 Spec 中的资源配置（requests/limits 来自 Spec）
+	specByName := make(map[string]corev1.Container, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		specByName[c.Name] = c
+	}
+
+	// Pod 级 limit 聚合：所有容器都设置了 CPU/Mem limit 才算 "有完整 limit"
+	var (
+		cpuLimitSum    int64
+		memLimitSum    int64
+		hasCPULimit    = len(pod.Spec.Containers) > 0
+		hasMemoryLimit = len(pod.Spec.Containers) > 0
+	)
+	for _, c := range pod.Spec.Containers {
+		cpuLim := c.Resources.Limits.Cpu()
+		if cpuLim == nil || cpuLim.IsZero() {
+			hasCPULimit = false
+		} else {
+			cpuLimitSum += cpuLim.MilliValue()
+		}
+		memLim := c.Resources.Limits.Memory()
+		if memLim == nil || memLim.IsZero() {
+			hasMemoryLimit = false
+		} else {
+			memLimitSum += memLim.Value()
+		}
+	}
 
 	// 容器信息
 	resp.Containers = make([]dto.ContainerStatus, 0, len(pod.Status.ContainerStatuses))
@@ -323,6 +409,22 @@ func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *
 			container.LastMessage = cs.LastTerminationState.Terminated.Message
 		}
 
+		// 注入 requests/limits（来自 Spec）
+		if spec, ok := specByName[cs.Name]; ok {
+			if q := spec.Resources.Requests.Cpu(); q != nil && !q.IsZero() {
+				container.CPURequest = q.String()
+			}
+			if q := spec.Resources.Limits.Cpu(); q != nil && !q.IsZero() {
+				container.CPULimit = q.String()
+			}
+			if q := spec.Resources.Requests.Memory(); q != nil && !q.IsZero() {
+				container.MemoryRequest = q.String()
+			}
+			if q := spec.Resources.Limits.Memory(); q != nil && !q.IsZero() {
+				container.MemoryLimit = q.String()
+			}
+		}
+
 		resp.Containers = append(resp.Containers, container)
 	}
 
@@ -331,9 +433,9 @@ func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *
 		resp.Conditions = make([]dto.PodCondition, 0, len(pod.Status.Conditions))
 		for _, cond := range pod.Status.Conditions {
 			pc := dto.PodCondition{
-				Type:   string(cond.Type),
-				Status: string(cond.Status),
-				Reason: cond.Reason,
+				Type:    string(cond.Type),
+				Status:  string(cond.Status),
+				Reason:  cond.Reason,
 				Message: cond.Message,
 			}
 			if !cond.LastTransitionTime.IsZero() {
@@ -345,15 +447,25 @@ func (s *PodService) toResponse(pod *corev1.Pod, metrics *operator.PodMetrics) *
 
 	// 添加资源指标
 	if metrics != nil {
-		resp.Metrics = &dto.PodMetricsResponse{
-			Containers: make([]dto.ContainerMetricsResponse, 0, len(metrics.Containers)),
-		}
+		var cpuSum, memSum int64
+		containers := make([]dto.ContainerMetricsResponse, 0, len(metrics.Containers))
 		for _, cm := range metrics.Containers {
-			resp.Metrics.Containers = append(resp.Metrics.Containers, dto.ContainerMetricsResponse{
+			containers = append(containers, dto.ContainerMetricsResponse{
 				Name:   cm.Name,
 				CPU:    cm.CPU,
 				Memory: cm.Memory,
 			})
+			cpuSum += cm.CPUMillis
+			memSum += cm.MemoryBytes
+		}
+		resp.Metrics = &dto.PodMetricsResponse{
+			Containers:       containers,
+			CPUMillis:        cpuSum,
+			MemoryBytes:      memSum,
+			HasCPULimit:      hasCPULimit,
+			HasMemoryLimit:   hasMemoryLimit,
+			CPULimitMillis:   cpuLimitSum,
+			MemoryLimitBytes: memLimitSum,
 		}
 	}
 

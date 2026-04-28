@@ -102,6 +102,9 @@ func (s *HPAService) Apply(ctx context.Context, clusterName, namespace string, r
 		if err != nil {
 			return nil, apperrors.Wrap(err, 500, 500, "获取现有 HPA 失败")
 		}
+		if req.ResourceVersion != "" && req.ResourceVersion != existing.ResourceVersion {
+			return nil, apperrors.New(409, 409, "资源已被其他用户修改，请刷新后重试")
+		}
 		hpa.ResourceVersion = existing.ResourceVersion
 		result, err = op.Update(ctx, namespace, hpa)
 		if err != nil {
@@ -124,9 +127,10 @@ func (s *HPAService) Apply(ctx context.Context, clusterName, namespace string, r
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      result.Name,
-		Namespace: result.Namespace,
-		YAML:      yamlContent,
+		Name:            result.Name,
+		Namespace:       result.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: result.ResourceVersion,
 	}, nil
 }
 
@@ -183,6 +187,7 @@ func (s *HPAService) buildHPAResponse(hpa *autoscalingv2.HorizontalPodAutoscaler
 		CurrentReplicas: hpa.Status.CurrentReplicas,
 		DesiredReplicas: hpa.Status.DesiredReplicas,
 		YAML:            yamlContent,
+		ResourceVersion: hpa.ResourceVersion,
 	}
 
 	// MinReplicas 默认为 1

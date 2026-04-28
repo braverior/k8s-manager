@@ -64,9 +64,11 @@ type PodMetrics struct {
 
 // ContainerMetrics 容器资源使用指标
 type ContainerMetrics struct {
-	Name   string `json:"name"`
-	CPU    string `json:"cpu"`    // 如 "100m"
-	Memory string `json:"memory"` // 如 "128Mi"
+	Name        string `json:"name"`
+	CPU         string `json:"cpu"`          // 如 "100m"
+	Memory      string `json:"memory"`       // 如 "128Mi"
+	CPUMillis   int64  `json:"cpu_millis"`   // CPU 用量（毫核），供聚合计算
+	MemoryBytes int64  `json:"memory_bytes"` // 内存用量（字节），供聚合计算
 }
 
 // GetMetrics 获取 Pod 的 CPU/内存指标
@@ -87,10 +89,14 @@ func (o *PodOperator) GetMetrics(ctx context.Context, namespace, name string) (*
 	}
 
 	for _, c := range metrics.Containers {
+		cpu := c.Usage.Cpu()
+		mem := c.Usage.Memory()
 		podMetrics.Containers = append(podMetrics.Containers, ContainerMetrics{
-			Name:   c.Name,
-			CPU:    formatPodCPU(c.Usage.Cpu()),
-			Memory: formatPodMemory(c.Usage.Memory()),
+			Name:        c.Name,
+			CPU:         formatPodCPU(cpu),
+			Memory:      formatPodMemory(mem),
+			CPUMillis:   cpu.MilliValue(),
+			MemoryBytes: mem.Value(),
 		})
 	}
 
@@ -116,10 +122,14 @@ func (o *PodOperator) ListMetrics(ctx context.Context, namespace string) ([]PodM
 			Containers: make([]ContainerMetrics, 0, len(m.Containers)),
 		}
 		for _, c := range m.Containers {
+			cpu := c.Usage.Cpu()
+			mem := c.Usage.Memory()
 			pm.Containers = append(pm.Containers, ContainerMetrics{
-				Name:   c.Name,
-				CPU:    formatPodCPU(c.Usage.Cpu()),
-				Memory: formatPodMemory(c.Usage.Memory()),
+				Name:        c.Name,
+				CPU:         formatPodCPU(cpu),
+				Memory:      formatPodMemory(mem),
+				CPUMillis:   cpu.MilliValue(),
+				MemoryBytes: mem.Value(),
 			})
 		}
 		result = append(result, pm)

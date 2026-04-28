@@ -45,9 +45,10 @@ func (s *ConfigMapService) List(ctx context.Context, clusterName, namespace stri
 			return nil, apperrors.Wrap(err, 500, 500, "转换 YAML 失败")
 		}
 		responses = append(responses, dto.ResourceYAMLResponse{
-			Name:      cm.Name,
-			Namespace: cm.Namespace,
-			YAML:      yamlContent,
+			Name:            cm.Name,
+			Namespace:       cm.Namespace,
+			YAML:            yamlContent,
+			ResourceVersion: cm.ResourceVersion,
 		})
 	}
 	return responses, nil
@@ -71,9 +72,10 @@ func (s *ConfigMapService) Get(ctx context.Context, clusterName, namespace, name
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      cm.Name,
-		Namespace: cm.Namespace,
-		YAML:      yamlContent,
+		Name:            cm.Name,
+		Namespace:       cm.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: cm.ResourceVersion,
 	}, nil
 }
 
@@ -114,6 +116,9 @@ func (s *ConfigMapService) Apply(ctx context.Context, clusterName, namespace str
 		if err != nil {
 			return nil, apperrors.Wrap(err, 500, 500, "获取现有 ConfigMap 失败")
 		}
+		if req.ResourceVersion != "" && req.ResourceVersion != existing.ResourceVersion {
+			return nil, apperrors.New(409, 409, "资源已被其他用户修改，请刷新后重试")
+		}
 		cm.ResourceVersion = existing.ResourceVersion
 		result, err = op.Update(ctx, namespace, cm)
 		if err != nil {
@@ -137,9 +142,10 @@ func (s *ConfigMapService) Apply(ctx context.Context, clusterName, namespace str
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      result.Name,
-		Namespace: result.Namespace,
-		YAML:      yamlContent,
+		Name:            result.Name,
+		Namespace:       result.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: result.ResourceVersion,
 	}, nil
 }
 

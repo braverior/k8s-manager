@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { YamlEditorDialog } from '@/components/YamlEditorDialog';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import type { HPA } from '@/types';
+import { ApiError } from '@/api';
 import {
   Plus,
   Search,
@@ -111,14 +112,20 @@ export function HPAPage() {
     if (!selectedResource) return;
     try {
       setSaving(true);
-      await hpaApi.update(selectedCluster, selectedNamespace, selectedResource.name, { yaml });
+      await hpaApi.update(selectedCluster, selectedNamespace, selectedResource.name, {
+        yaml,
+        resourceVersion: selectedResource.resourceVersion,
+      });
       toast({ title: 'Success', description: 'HPA updated successfully' });
       setEditDialogOpen(false);
       fetchHPAs();
     } catch (err) {
+      const isConflict = err instanceof ApiError && err.status === 409;
       toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to update HPA',
+        title: isConflict ? '版本冲突' : 'Error',
+        description: isConflict
+          ? '资源已被其他用户修改，请关闭编辑器后重新打开获取最新版本'
+          : err instanceof Error ? err.message : 'Failed to update HPA',
         variant: 'destructive',
       });
     } finally {

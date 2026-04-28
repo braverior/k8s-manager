@@ -59,7 +59,8 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 	podCountByDeployment := make(map[string]int)
 	podStatusByDeployment := make(map[string]map[string]int)
 	if pods != nil {
-		for _, pod := range pods.Items {
+		for i := range pods.Items {
+			pod := &pods.Items[i]
 			for _, owner := range pod.OwnerReferences {
 				if owner.Kind == "ReplicaSet" {
 					if deployName, ok := rsToDeployment[owner.Name]; ok {
@@ -67,7 +68,7 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 						if podStatusByDeployment[deployName] == nil {
 							podStatusByDeployment[deployName] = make(map[string]int)
 						}
-						podStatusByDeployment[deployName][string(pod.Status.Phase)]++
+						podStatusByDeployment[deployName][getPodDisplayStatus(pod)]++
 					}
 					break
 				}
@@ -95,6 +96,7 @@ func (s *DeploymentService) List(ctx context.Context, clusterName, namespace str
 			PodCount:          podCountByDeployment[d.Name],
 			PodStatusCounts:   podStatusByDeployment[d.Name],
 			YAML:              yamlContent,
+			ResourceVersion:   d.ResourceVersion,
 		})
 	}
 	return responses, nil
@@ -156,6 +158,7 @@ func (s *DeploymentService) Get(ctx context.Context, clusterName, namespace, nam
 		AvailableReplicas: d.Status.AvailableReplicas,
 		PodCount:          podCount,
 		YAML:              yamlContent,
+		ResourceVersion:   d.ResourceVersion,
 	}, nil
 }
 
@@ -191,6 +194,9 @@ func (s *DeploymentService) Apply(ctx context.Context, clusterName, namespace st
 		if err != nil {
 			return nil, apperrors.Wrap(err, 500, 500, "获取现有 Deployment 失败")
 		}
+		if req.ResourceVersion != "" && req.ResourceVersion != existing.ResourceVersion {
+			return nil, apperrors.New(409, 409, "资源已被其他用户修改，请刷新后重试")
+		}
 		deploy.ResourceVersion = existing.ResourceVersion
 		result, err = op.Update(ctx, namespace, deploy)
 		if err != nil {
@@ -213,9 +219,10 @@ func (s *DeploymentService) Apply(ctx context.Context, clusterName, namespace st
 	}
 
 	return &dto.ResourceYAMLResponse{
-		Name:      result.Name,
-		Namespace: result.Namespace,
-		YAML:      yamlContent,
+		Name:            result.Name,
+		Namespace:       result.Namespace,
+		YAML:            yamlContent,
+		ResourceVersion: result.ResourceVersion,
 	}, nil
 }
 
